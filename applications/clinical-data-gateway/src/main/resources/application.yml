@@ -1,0 +1,224 @@
+# Clinical Data Gateway Application Configuration
+spring:
+  application:
+    name: clinical-data-gateway
+  
+  # Profile-specific configuration
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:development}
+  
+  # JMS Configuration for IBM MQ
+  jms:
+    template:
+      default-destination: CLINICAL.DEFAULT
+      delivery-persistent: true
+      time-to-live: 86400000  # 24 hours
+    
+  # Jackson JSON Configuration
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    time-zone: UTC
+
+# IBM MQ Configuration
+ibm:
+  mq:
+    queueManager: ${MQ_QMGR_NAME:CLINICAL_QM}
+    channel: ${MQ_CHANNEL:DEV.APP.SVRCONN}
+    connName: ${MQ_HOST:localhost}(${MQ_PORT:1414})
+    user: ${MQ_APP_USER:clinical_app}
+    password: ${MQ_APP_PASSWORD:clinical123}
+    clientId: clinical-data-gateway-${random.uuid}
+    
+    # SSL Configuration (for production)
+    ssl:
+      enabled: ${MQ_SSL_ENABLED:false}
+      keyStore: ${MQ_SSL_KEYSTORE:}
+      keyStorePassword: ${MQ_SSL_KEYSTORE_PASSWORD:}
+      trustStore: ${MQ_SSL_TRUSTSTORE:}
+      trustStorePassword: ${MQ_SSL_TRUSTSTORE_PASSWORD:}
+
+# Clinical Data Processing Configuration
+clinical:
+  jms:
+    queues:
+      vital-signs: ${CLINICAL_VITAL_SIGNS_QUEUE:CLINICAL.VITAL.SIGNS}
+      lab-results: ${CLINICAL_LAB_RESULTS_QUEUE:CLINICAL.LAB.RESULTS}
+      adverse-events: ${CLINICAL_ADVERSE_EVENTS_QUEUE:CLINICAL.ADVERSE.EVENTS}
+      demographics: ${CLINICAL_DEMOGRAPHICS_QUEUE:CLINICAL.DEMOGRAPHICS}
+      priority: ${CLINICAL_PRIORITY_QUEUE:CLINICAL.PRIORITY}
+  
+  validation:
+    # Enable strict validation for clinical data
+    strict-mode: ${CLINICAL_VALIDATION_STRICT:true}
+    # Validate patient ID format
+    validate-patient-id: true
+    # Maximum age for clinical data (in hours)
+    max-data-age-hours: 24
+  
+  security:
+    # HIPAA compliance settings
+    audit-logging: ${CLINICAL_AUDIT_LOGGING:true}
+    data-masking: ${CLINICAL_DATA_MASKING:true}
+    encryption-enabled: ${CLINICAL_ENCRYPTION:false}
+
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  error:
+    include-stacktrace: never
+    include-message: always
+  compression:
+    enabled: true
+    mime-types: application/json,text/plain
+
+# Actuator Configuration for Health Checks and Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+    metrics:
+      enabled: true
+  health:
+    jms:
+      enabled: true
+    defaults:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    java:
+      enabled: true
+    os:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: clinical-data-gateway
+      service: healthcare
+
+# Logging Configuration
+logging:
+  level:
+    com.healthcare.clinical_data_gateway: ${LOG_LEVEL:INFO}
+    org.springframework.jms: INFO
+    com.ibm.mq: WARN
+    org.springframework.security: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%logger{36}] - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level [%logger{36}] - %msg%n"
+  file:
+    name: ${LOG_FILE:logs/clinical-data-gateway.log}
+    max-size: 100MB
+    max-history: 30
+
+# Micrometer/Prometheus Configuration
+micrometer:
+  tracing:
+    enabled: false
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: development
+
+# Development-specific IBM MQ settings
+ibm:
+  mq:
+    queueManager: CLINICAL_QM
+    channel: DEV.APP.SVRCONN
+    connName: localhost(1414)
+    user: clinical_app
+    password: clinical123
+
+# Development logging
+logging:
+  level:
+    com.healthcare.clinical_data_gateway: DEBUG
+    org.springframework.jms: DEBUG
+    com.ibm.mq: INFO
+
+clinical:
+  validation:
+    strict-mode: false  # More lenient validation in development
+
+---
+# Staging Profile  
+spring:
+  config:
+    activate:
+      on-profile: staging
+
+# Staging-specific settings
+ibm:
+  mq:
+    queueManager: CLINICAL_QM_STAGING
+    connName: staging-mq-host(1414)
+    ssl:
+      enabled: true
+
+clinical:
+  validation:
+    strict-mode: true
+  security:
+    audit-logging: true
+    data-masking: true
+
+logging:
+  level:
+    com.healthcare.clinical_data_gateway: INFO
+    
+---
+# Production Profile
+spring:
+  config:
+    activate:
+      on-profile: production
+
+# Production-specific settings
+ibm:
+  mq:
+    queueManager: CLINICAL_QM_PROD
+    connName: prod-mq-cluster(1414)
+    ssl:
+      enabled: true
+      keyStore: /opt/ssl/client-key.jks
+      trustStore: /opt/ssl/client-trust.jks
+
+clinical:
+  validation:
+    strict-mode: true
+  security:
+    audit-logging: true
+    data-masking: true
+    encryption-enabled: true
+
+# Production security
+server:
+  error:
+    include-stacktrace: never
+    include-message: on-param
+
+logging:
+  level:
+    com.healthcare.clinical_data_gateway: INFO
+    org.springframework.jms: WARN
+  file:
+    name: /var/log/clinical-data-gateway/application.log
