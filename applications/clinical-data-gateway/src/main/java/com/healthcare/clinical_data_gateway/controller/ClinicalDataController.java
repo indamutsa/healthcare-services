@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * REST controller for receiving clinical trial data
@@ -28,30 +29,7 @@ import java.util.Map;
 public class ClinicalDataController {
     
     private final ClinicalDataService clinicalDataService;
-    private final Counter dataReceivedCounter;
-    private final Counter dataProcessedCounter;
-    private final Counter dataErrorCounter;
-    private final Timer processingTimer;
-    
-    public ClinicalDataController(ClinicalDataService clinicalDataService, MeterRegistry meterRegistry) {
-        this.clinicalDataService = clinicalDataService;
-        this.dataReceivedCounter = Counter.builder("clinical_data_received_total")
-                .description("Total number of clinical data messages received")
-                .tag("service", "clinical-data-gateway")
-                .register(meterRegistry);
-        this.dataProcessedCounter = Counter.builder("clinical_data_processed_total")
-                .description("Total number of clinical data messages processed successfully")
-                .tag("service", "clinical-data-gateway")
-                .register(meterRegistry);
-        this.dataErrorCounter = Counter.builder("clinical_data_errors_total")
-                .description("Total number of clinical data processing errors")
-                .tag("service", "clinical-data-gateway")
-                .register(meterRegistry);
-        this.processingTimer = Timer.builder("clinical_data_processing_duration")
-                .description("Time taken to process clinical data")
-                .tag("service", "clinical-data-gateway")
-                .register(meterRegistry);
-    }
+    private final MeterRegistry meterRegistry;
     
     /**
      * Primary endpoint for receiving clinical trial data
@@ -61,8 +39,14 @@ public class ClinicalDataController {
     public ResponseEntity<Map<String, Object>> receiveClinicalData(
             @Valid @RequestBody ClinicalDataPayload payload) {
         
-        Timer.Sample timer = Timer.start();
-        dataReceivedCounter.increment();
+        Timer.Sample timer = Timer.start(meterRegistry);
+        
+        // Increment counters
+        Counter.builder("clinical_data_received_total")
+                .description("Total number of clinical data messages received")
+                .tag("service", "clinical-data-gateway")
+                .register(meterRegistry)
+                .increment();
         
         log.info("Received clinical data - ID: {}, Type: {}, Patient: {}, Site: {}", 
                 payload.getMessageId(), payload.getDataType(), 
@@ -75,14 +59,26 @@ public class ClinicalDataController {
             // Create success response
             Map<String, Object> response = createSuccessResponse(payload, processingId);
             
-            dataProcessedCounter.increment();
+            // Increment success counter
+            Counter.builder("clinical_data_processed_total")
+                    .description("Total number of clinical data messages processed successfully")
+                    .tag("service", "clinical-data-gateway")
+                    .register(meterRegistry)
+                    .increment();
+            
             log.info("Successfully processed clinical data - ID: {}, ProcessingID: {}", 
                     payload.getMessageId(), processingId);
             
             return ResponseEntity.ok(response);
             
         } catch (Exception e) {
-            dataErrorCounter.increment();
+            // Increment error counter
+            Counter.builder("clinical_data_errors_total")
+                    .description("Total number of clinical data processing errors")
+                    .tag("service", "clinical-data-gateway")
+                    .register(meterRegistry)
+                    .increment();
+            
             log.error("Error processing clinical data - ID: {}, Error: {}", 
                     payload.getMessageId(), e.getMessage(), e);
             
@@ -90,7 +86,10 @@ public class ClinicalDataController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
             
         } finally {
-            timer.stop(processingTimer);
+            timer.stop(Timer.builder("clinical_data_processing_duration")
+                    .description("Time taken to process clinical data")
+                    .tag("service", "clinical-data-gateway")
+                    .register(meterRegistry));
         }
     }
     
@@ -114,11 +113,18 @@ public class ClinicalDataController {
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getProcessingStats() {
         Map<String, Object> stats = new HashMap<>();
-        stats.put("messagesReceived", dataReceivedCounter.count());
-        stats.put("messagesProcessed", dataProcessedCounter.count());
-        stats.put("processingErrors", dataErrorCounter.count());
-        stats.put("successRate", calculateSuccessRate());
-        stats.put("averageProcessingTime", processingTimer.mean());
+        
+        // Get metrics from registry
+        Counter receivedCounter = meterRegistry.find("clinical_data_received_total").counter();
+        Counter processedCounter = meterRegistry.find("clinical_data_processed_total").counter();
+        Counter errorCounter = meterRegistry.find("clinical_data_errors_total").counter();
+        Timer processingTimer = meterRegistry.find("clinical_data_processing_duration").timer();
+        
+        stats.put("messagesReceived", receivedCounter != null ? receivedCounter.count() : 0);
+        stats.put("messagesProcessed", processedCounter != null ? processedCounter.count() : 0);
+        stats.put("processingErrors", errorCounter != null ? errorCounter.count() : 0);
+        stats.put("successRate", calculateSuccessRate(receivedCounter, processedCounter));
+        stats.put("averageProcessingTime", processingTimer != null ? processingTimer.mean(TimeUnit.MILLISECONDS) : 0);
         stats.put("timestamp", LocalDateTime.now());
         
         return ResponseEntity.ok(stats);
@@ -197,11 +203,12 @@ public class ClinicalDataController {
     /**
      * Calculate success rate percentage
      */
-    private double calculateSuccessRate() {
-        double received = dataReceivedCounter.count();
-        if (received == 0) return 0.0;
+    private double calculateSuccessRate(Counter receivedCounter, Counter processedCounter) {
+        if (receivedCounter == null || receivedCounter.count() == 0) return 0.0;
+        if (processedCounter == null) return 0.0;
         
-        double processed = dataProcessedCounter.count();
+        double received = receivedCounter.count();
+        double processed = processedCounter.count();
         return Math.round((processed / received) * 100.0 * 100.0) / 100.0;
     }
 }
