@@ -54,3 +54,8 @@ dist/
 # Test reports
 test-results/
 coverage/
+
+# Healthcare data (HIPAA compliance)
+**/patient-data/
+**/phi/
+**/clinical-records/
