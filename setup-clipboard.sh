@@ -29,11 +29,11 @@ printf '\033]52;c;%s\a' "$data"
 # Some terminals prefer ST:
 printf '\033]52;c;%s\033\\' "$data" >/dev/null 2>&1 || true
 SH
+
 chmod +x /usr/local/bin/pbcopy
 
 # pbpaste: Wayland > X11; no portable OSC52 "paste"
 cat > /usr/local/bin/pbpaste <<'SH'
-
 if command -v wl-paste >/dev/null 2>&1 && [ -n "$WAYLAND_DISPLAY" ]; then
   exec wl-paste
 fi
