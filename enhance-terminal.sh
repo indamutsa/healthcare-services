@@ -154,7 +154,7 @@ alias ...='cd ../..'
 # Python aliases
 alias python='python3'
 alias pip='pip3'
-alias venv-activate='source venv/bin/activate'
+alias venv-activate='source .pyenv/bin/activate'
 
 # Healthcare specific commands
 alias hc-build='mvn clean package -f applications/clinical-data-gateway/pom.xml'
@@ -197,9 +197,8 @@ alias processes='ps aux | grep -v grep'
 # Activate healthcare development environment
 healthcare-env() {
     echo "🏥 Activating Healthcare Clinical Trials Platform Environment"
-    cd ~/workspace/healthcare-platform
     if [ -d "venv" ]; then
-        source venv/bin/activate
+        source .pyenv/bin/activate
         echo "✅ Python virtual environment activated"
     else
         echo "⚠️  Python virtual environment not found"
@@ -264,11 +263,10 @@ healthcare-demo() {
     echo "🚀 Setting up complete healthcare demo environment..."
     
     # Navigate to workspace
-    cd ~/workspace/healthcare-platform
     
     # Activate Python environment
     if [ -d "venv" ]; then
-        source venv/bin/activate
+        source .pyenv/bin/activate
         echo "✅ Python environment activated"
     fi
     
