@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  clinical-mq:
+    build:
+      context: ./infrastructure/docker/ibm-mq
+      dockerfile: Dockerfile
+    container_name: clinical-mq
+    environment:
+      - LICENSE=accept
+      - MQ_QMGR_NAME=CLINICAL_QM
+      - MQ_APP_PASSWORD=clinical123   # creates user 'app' with this password
+      - MQ_ENABLE_EMBEDDED_WEB_SERVER=true
+    ports:
+      - "1414:1414"
+      - "9443:9443"
+    healthcheck:
+      test: ["CMD-SHELL", "dspmq -m CLINICAL_QM -o status | grep -q 'STATUS(Running)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+    networks: [clinical-network]
+
+
+  clinical-data-gateway:
+    build:
+      context: ./applications/clinical-data-gateway
+      dockerfile: Dockerfile
+    container_name: clinical-gateway
+    environment:
+      - SPRING_PROFILES_ACTIVE=development
+      - IBM_MQ_QUEUE_MANAGER=CLINICAL_QM
+      - IBM_MQ_CHANNEL=DEV.APP.SVRCONN
+      - IBM_MQ_CONNNAME=clinical-mq(1414)
+      - IBM_MQ_USER=app
+      - IBM_MQ_PASSWORD=clinical123
+      - IBM_MQ_USERAUTHENTICATIONMQCSP=true
+    depends_on:
+      clinical-mq:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks: [clinical-network]
+
+networks:
+  clinical-network:
+    driver: bridge

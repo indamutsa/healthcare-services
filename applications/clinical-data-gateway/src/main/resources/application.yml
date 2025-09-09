@@ -27,12 +27,13 @@ spring:
 # IBM MQ Configuration for Auto-configuration
 ibm:
   mq:
-    queueManager: ${MQ_QMGR_NAME:CLINICAL_QM}
-    channel: ${MQ_CHANNEL:DEV.APP.SVRCONN}
-    connName: ${MQ_HOST:localhost}(${MQ_PORT:1414})
-    user: ${MQ_APP_USER:clinical_app}
-    password: ${MQ_APP_PASSWORD:clinical123}
-    clientId: clinical-data-gateway-${random.uuid}
+    queueManager: CLINICAL_QM
+    channel: DEV.APP.SVRCONN          # <- non-admin client channel
+    connName: clinical-mq(1414)
+    user: app
+    password: clinical123
+    userAuthenticationMQCSP: true     # ensure MQCSP auth is used
+
     
     # Connection settings
     applicationName: ClinicalDataGateway
@@ -147,9 +148,10 @@ ibm:
   mq:
     queueManager: CLINICAL_QM
     channel: DEV.APP.SVRCONN
-    connName: localhost(1414)
-    user: clinical_app
+    connName: clinical-mq(1414) 
+    user: app
     password: clinical123
+    userAuthenticationMQCSP: true
 
 # Development logging
 logging:

@@ -543,8 +543,6 @@ git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:
 # 5. Update plugins in .zshrc
 sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 
-# 6. Start zsh
-exec zsh
 
 echo ""
 echo "🎉 ZSH Terminal Enhancement Complete!"
@@ -571,3 +569,9 @@ echo "  • All healthcare commands start with 'hc-' or 'healthcare-'"
 echo "  • Use 'healthcare-status' to check system status"
 echo ""
 print_status "Enhanced terminal ready!"
+
+chmod +x setup-clipboard.sh
+./setup-clipboard.sh
+
+# 6. Start zsh
+exec zsh
