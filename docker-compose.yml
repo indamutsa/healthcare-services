@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   clinical-mq:
+    platform: linux/amd64
     build:
       context: ./infrastructure/docker/ibm-mq
       dockerfile: Dockerfile
@@ -10,6 +11,7 @@ services:
       - LICENSE=accept
       - MQ_QMGR_NAME=CLINICAL_QM
       - MQ_APP_PASSWORD=clinical123   # creates user 'app' with this password
+      - MQ_ADMIN_PASSWORD=admin123    # set web console admin password
       - MQ_ENABLE_EMBEDDED_WEB_SERVER=true
     ports:
       - "1414:1414"
