@@ -1,0 +1,131 @@
+* ==================================================================
+* Clinical Trials Queue Manager - Comprehensive DEV Init
+* ==================================================================
+
+* --- Queue manager basics ---
+ALTER QMGR DESCR('Clinical Trials QM for development') MAXMSGL(104857600)
+
+* Dead-letter queue (DLQ) for undeliverable messages
+DEFINE QLOCAL('CLINICAL.DLQ') REPLACE DEFPSIST(YES) DESCR('Dead-letter queue')
+ALTER QMGR DEADQ('CLINICAL.DLQ')
+
+* --- Core clinical queues ---
+DEFINE QLOCAL('CLINICAL.DEFAULT')         REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Default clinical data queue')
+DEFINE QLOCAL('CLINICAL.VITAL.SIGNS')     REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Patient vital signs queue')
+DEFINE QLOCAL('CLINICAL.LAB.RESULTS')     REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Laboratory results queue')
+DEFINE QLOCAL('CLINICAL.ADVERSE.EVENTS')  REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Adverse events reporting queue')
+DEFINE QLOCAL('CLINICAL.DEMOGRAPHICS')    REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Patient demographics queue')
+DEFINE QLOCAL('CLINICAL.PRIORITY')        REPLACE MAXDEPTH(5000)  DEFPSIST(YES) DESCR('High priority clinical data queue')
+
+* * Backout handling for poison messages
+DEFINE QLOCAL('CLINICAL.BACKOUT')         REPLACE MAXDEPTH(5000)  DEFPSIST(YES) DESCR('Backout queue for poison messages')
+ALTER QLOCAL('CLINICAL.LAB.RESULTS')      BOTHRESH(3) BOQNAME('CLINICAL.BACKOUT')
+
+* Entry-point alias to simplify producer config
+DEFINE QALIAS('CLINICAL.IN.DEFAULT')      REPLACE TARGTYPE(QUEUE) TARGET('CLINICAL.DEFAULT') DESCR('Alias for default input')
+
+* Dynamic reply queues via model queue (clients use this model name)
+DEFINE QMODEL('CLINICAL.REPLY.MODEL')     REPLACE DEFTYPE(TEMPDYN) DEFSOPT(SHARED) MAXMSGL(10485760) DESCR('Model for dynamic reply queues')
+
+* --- Pub/Sub example for learning ---
+DEFINE TOPIC('CLINICAL.TOPIC.VITALS')     REPLACE TOPICSTR('/clinical/vitals') DESCR('Topic for vital signs events')
+DEFINE SUB('SUB.VITALS.TO.QUEUE')         REPLACE TOPICSTR('/clinical/vitals') DEST('CLINICAL.VITAL.SIGNS')
+
+* --- Listener (explicit for clarity; image also starts one) ---
+STOP LISTENER('SYSTEM.LISTENER.TCP.1')
+DELETE LISTENER('SYSTEM.LISTENER.TCP.1')
+DEFINE LISTENER('L.TCP.1414') TRPTYPE(TCP) PORT(1414) REPLACE
+START LISTENER('L.TCP.1414')
+
+* --- Application client channel ---
+DEFINE CHANNEL('DEV.APP.SVRCONN') CHLTYPE(SVRCONN) TRPTYPE(TCP) DESCR('Non-admin client channel') REPLACE
+
+* Require user/password for clients and adopt context
+ALTER AUTHINFO('SYSTEM.DEFAULT.AUTHINFO.IDPWOS') AUTHTYPE(IDPWOS) ADOPTCTX(YES) CHCKCLNT(REQUIRED) CHCKLOCL(OPTIONAL)
+ALTER QMGR CONNAUTH('SYSTEM.DEFAULT.AUTHINFO.IDPWOS')
+REFRESH SECURITY TYPE(CONNAUTH)
+
+* Channel auth: use client-supplied user (no MCAUSER override)
+SET CHLAUTH('DEV.APP.SVRCONN') TYPE(ADDRESSMAP) ADDRESS('*') USERSRC(CHANNEL) ACTION(REPLACE)
+
+* --- Object Authority (OAM) ---
+* Intentionally not granting user-specific permissions yet.
+
+* --- Remote queue example (for learning; not used by app) ---
+DEFINE QLOCAL('TO.REMOTE.QM')             REPLACE USAGE(XMITQ) DESCR('XMITQ to REMOTE.QM')
+DEFINE QREMOTE('CLINICAL.REMOTE.OUT')     REPLACE RNAME('CLINICAL.DEFAULT') RQMNAME('REMOTE.QM') XMITQ('TO.REMOTE.QM') DESCR('Remote clinical out')
+DEFINE CHANNEL('TO.REMOTE.QM') CHLTYPE(SDR) TRPTYPE(TCP) CONNAME('remote-mq(1414)') XMITQ('TO.REMOTE.QM') DESCR('Sender channel to REMOTE.QM') REPLACE
+
+
+* --- Useful display commands for verification (run manually) ---
+* DIS QMGR ALL
+* DIS QLOCAL('CLINICAL.*') CURDEPTH BOTHRESH BOQNAME
+* DIS CHSTATUS('DEV.APP.SVRCONN') ALL
+* DIS LISTENER(*) STATUS
+* =====================* ==================================================================
+* Clinical Trials Queue Manager - Comprehensive DEV Init
+* ==================================================================
+
+* --- Queue manager basics ---
+ALTER QMGR DESCR('Clinical Trials QM for development') MAXMSGL(104857600)
+
+* Dead-letter queue (DLQ) for undeliverable messages
+DEFINE QLOCAL('CLINICAL.DLQ') REPLACE DEFPSIST(YES) DESCR('Dead-letter queue')
+ALTER QMGR DEADQ('CLINICAL.DLQ')
+
+* --- Core clinical queues ---
+DEFINE QLOCAL('CLINICAL.DEFAULT')         REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Default clinical data queue')
+DEFINE QLOCAL('CLINICAL.VITAL.SIGNS')     REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Patient vital signs queue')
+DEFINE QLOCAL('CLINICAL.LAB.RESULTS')     REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Laboratory results queue')
+DEFINE QLOCAL('CLINICAL.ADVERSE.EVENTS')  REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Adverse events reporting queue')
+DEFINE QLOCAL('CLINICAL.DEMOGRAPHICS')    REPLACE MAXDEPTH(10000) DEFPSIST(YES) DESCR('Patient demographics queue')
+DEFINE QLOCAL('CLINICAL.PRIORITY')        REPLACE MAXDEPTH(5000)  DEFPSIST(YES) DESCR('High priority clinical data queue')
+
+* * Backout handling for poison messages
+DEFINE QLOCAL('CLINICAL.BACKOUT')         REPLACE MAXDEPTH(5000)  DEFPSIST(YES) DESCR('Backout queue for poison messages')
+ALTER QLOCAL('CLINICAL.LAB.RESULTS')      BOTHRESH(3) BOQNAME('CLINICAL.BACKOUT')
+
+* Entry-point alias to simplify producer config
+DEFINE QALIAS('CLINICAL.IN.DEFAULT')      REPLACE TARGTYPE(QUEUE) TARGET('CLINICAL.DEFAULT') DESCR('Alias for default input')
+
+* Dynamic reply queues via model queue (clients use this model name)
+DEFINE QMODEL('CLINICAL.REPLY.MODEL')     REPLACE DEFTYPE(TEMPDYN) DEFSOPT(SHARED) MAXMSGL(10485760) DESCR('Model for dynamic reply queues')
+
+* --- Pub/Sub example for learning ---
+DEFINE TOPIC('CLINICAL.TOPIC.VITALS')     REPLACE TOPICSTR('/clinical/vitals') DESCR('Topic for vital signs events')
+DEFINE SUB('SUB.VITALS.TO.QUEUE')         REPLACE TOPICSTR('/clinical/vitals') DEST('CLINICAL.VITAL.SIGNS')
+
+* --- Listener (explicit for clarity; image also starts one) ---
+DEFINE LISTENER('L.TCP.1414') TRPTYPE(TCP) PORT(1414) REPLACE
+START LISTENER('L.TCP.1414')
+
+* --- Application client channel ---
+DEFINE CHANNEL('DEV.APP.SVRCONN') CHLTYPE(SVRCONN) TRPTYPE(TCP) DESCR('Non-admin client channel') REPLACE
+
+* Require user/password for clients and adopt context
+ALTER AUTHINFO('SYSTEM.DEFAULT.AUTHINFO.IDPWOS') AUTHTYPE(IDPWOS) ADOPTCTX(YES) CHCKCLNT(REQUIRED) CHCKLOCL(OPTIONAL)
+ALTER QMGR CONNAUTH('SYSTEM.DEFAULT.AUTHINFO.IDPWOS')
+REFRESH SECURITY TYPE(CONNAUTH)
+
+* Channel auth: use client-supplied user (no MCAUSER override)
+SET CHLAUTH('DEV.APP.SVRCONN') TYPE(ADDRESSMAP) ADDRESS('*') USERSRC(CHANNEL) ACTION(REPLACE)
+
+* --- Object Authority (OAM) ---
+SET AUTHREC PRINCIPAL('app') OBJTYPE(QMGR) AUTHADD(CONNECT,INQ)
+SET AUTHREC PROFILE('CLINICAL.*') PRINCIPAL('app') OBJTYPE(QUEUE) AUTHADD(BROWSE,GET,INQ,PUT)
+SET AUTHREC PROFILE('SYSTEM.DEFAULT.MODEL.QUEUE') PRINCIPAL('app') OBJTYPE(QUEUE) AUTHADD(GET)
+
+* Refresh security to apply changes
+REFRESH SECURITY TYPE(AUTHSERV)
+
+* --- Remote queue example (for learning; not used by app) ---
+DEFINE QLOCAL('TO.REMOTE.QM')             REPLACE USAGE(XMITQ) DESCR('XMITQ to REMOTE.QM')
+DEFINE QREMOTE('CLINICAL.REMOTE.OUT')     REPLACE RNAME('CLINICAL.DEFAULT') RQMNAME('REMOTE.QM') XMITQ('TO.REMOTE.QM') DESCR('Remote clinical out')
+DEFINE CHANNEL('TO.REMOTE.QM') CHLTYPE(SDR) TRPTYPE(TCP) CONNAME('remote-mq(1414)') XMITQ('TO.REMOTE.QM') DESCR('Sender channel to REMOTE.QM') REPLACE
+
+* --- Useful display commands for verification (run manually) ---
+* DIS QMGR ALL
+* DIS QLOCAL('CLINICAL.*') CURDEPTH BOTHRESH BOQNAME
+* DIS CHSTATUS('DEV.APP.SVRCONN') ALL
+* DIS LISTENER(*) STATUS
+* =============================== end ========================================= end ===============================

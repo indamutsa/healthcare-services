@@ -1,19 +1,28 @@
 {
-	"name": "Alpine",
-	"image": "mcr.microsoft.com/devcontainers/base:alpine-3.20",
-	
-	"runArgs": [
-		"--privileged",
-		"--hostname=healthcare"
-	],
-	
-	"mounts": [
-		"source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
-	],
-	
-	"workspaceFolder": "/workspaces/clinical-trials-service",
-	
-	"postCreateCommand": "apk add docker docker-compose zsh git curl && chsh -s /bin/zsh",
-	
-	"remoteUser": "root"
+  "name": "Alpine",
+  "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20",
+
+  "runArgs": [
+    "--privileged",
+    "--hostname=healthcare",
+    "--network=host"
+  ],
+
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
+  "workspaceFolder": "/workspaces/clinical-trials-service",
+
+  "postCreateCommand": "apk add docker docker-compose zsh git curl && chsh -s /bin/zsh && ./alpine-setup.sh && ./enhance-terminal.sh",
+
+  "remoteUser": "root",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Spring Boot App",
+      "onAutoForward": "openBrowser"
+    }
+  }
 }

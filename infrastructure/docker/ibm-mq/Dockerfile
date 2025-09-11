@@ -5,6 +5,10 @@ ENV MQ_QMGR_NAME=CLINICAL_QM
 ENV MQ_APP_PASSWORD=clinical123
 ENV MQ_ENABLE_EMBEDDED_WEB_SERVER=true
 
-# No custom MQSC or qm.ini for now; run with image defaults
+# Copy custom qm.ini to configure the queue manager
+COPY config/qm.ini /etc/mqm/qm.ini
+
+# Copy MQSC scripts; the image runs /etc/mqm/*.mqsc on first start
+COPY config/*.mqsc /etc/mqm/
 
 EXPOSE 1414 9443

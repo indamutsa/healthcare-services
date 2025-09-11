@@ -52,7 +52,9 @@ apk add --no-cache \
     tar \
     gzip \
     ca-certificates \
-    openssl
+    openssl \
+    busybox-extras   # provides telnet
+
 print_status "Basic tools installed"
 
 # Install Java 17 (OpenJDK)
@@ -113,7 +115,7 @@ apk add --no-cache \
     jq \
     httpie \
     netcat-openbsd \
-    telnet \
+    busybox-extras \
     bind-tools \
     iputils
 print_status "Development utilities installed"
@@ -286,6 +288,12 @@ else
     docker logs healthcare-mq
 fi
 EOF
+
+npm install -g @openai/codex
+npm install -g @anthropic-ai/claude-code
+npm install -g @qwen-code/qwen-code@latest
+npm install -g @google/gemini-cli
+
 
 chmod +x ~/setup-ibm-mq.sh
 print_status "IBM MQ setup script created"

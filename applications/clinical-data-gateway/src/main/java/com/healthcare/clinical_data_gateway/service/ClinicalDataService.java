@@ -1,4 +1,5 @@
 package com.healthcare.clinical_data_gateway.service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,6 +49,7 @@ public class ClinicalDataService {
      * Process clinical data payload and route to appropriate queue
      * Returns a processing ID for tracking
      */
+    @Transactional
     public String processClinicalData(ClinicalDataPayload payload) {
         try {
             // Generate unique processing ID

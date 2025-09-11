@@ -528,20 +528,20 @@ chmod +x ~/healthcare-terminal-welcome.sh
 print_status "Terminal welcome script created"
 
 
-# 1. Install zsh
-apk add zsh git curl
+# # 1. Install zsh
+# apk add zsh git curl
 
-# 2. Install oh-my-zsh
-sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+# # 2. Install oh-my-zsh
+# sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
 
-# 3. Clone autosuggestions
-git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+# # 3. Clone autosuggestions
+# git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
-# 4. Clone syntax highlighting  
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+# # 4. Clone syntax highlighting  
+# git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 
-# 5. Update plugins in .zshrc
-sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
+# # 5. Update plugins in .zshrc
+# sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 
 
 echo ""
@@ -573,5 +573,3 @@ print_status "Enhanced terminal ready!"
 chmod +x setup-clipboard.sh
 ./setup-clipboard.sh
 
-# 6. Start zsh
-exec zsh

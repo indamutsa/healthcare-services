@@ -303,20 +303,20 @@ class ClinicalDataSender:
             # Convert dataclass to dict, handling nested objects
             data = self._serialize_payload(payload)
             logger.info(data) 
-            # response = self.session.post(
-            #     f"{self.endpoint_url}/api/clinical/data",
-            #     json=data,
-            #     timeout=10
-            # )
+            response = self.session.post(
+                f"{self.endpoint_url}/api/clinical/data",
+                json=data,
+                timeout=10
+            )
             
-            # if response.status_code == 200:
-            #     logger.info(f"✅ Successfully sent {payload.message_id} - "
-            #               f"Type: {self._get_data_type(payload)}")
-            #     return True
-            # else:
-            #     logger.error(f"❌ Failed to send {payload.message_id} - "
-            #                f"Status: {response.status_code}, Response: {response.text}")
-            #     return False
+            if response.status_code == 200:
+                logger.info(f"✅ Successfully sent {payload.message_id} - "
+                          f"Type: {self._get_data_type(payload)}")
+                return True
+            else:
+                logger.error(f"❌ Failed to send {payload.message_id} - "
+                           f"Status: {response.status_code}, Response: {response.text}")
+                return False
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ Network error sending {payload.message_id}: {e}")
