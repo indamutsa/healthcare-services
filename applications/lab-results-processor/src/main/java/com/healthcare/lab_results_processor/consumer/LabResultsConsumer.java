@@ -1,7 +1,6 @@
 package com.healthcare.lab_results_processor.consumer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.healthcare.lab_results_processor.dto.ClinicalDataPayload;
+import com.healthcare.lab_results_processor.dto.EnrichedClinicalMessage;
 import com.healthcare.lab_results_processor.service.LabResultsProcessingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,36 +20,33 @@ import jakarta.jms.TextMessage;
 public class LabResultsConsumer {
     
     private final LabResultsProcessingService processingService;
-    private final ObjectMapper objectMapper;
     
     /**
      * Listen for lab results from the CLINICAL.LAB.RESULTS queue
+     * Spring automatically deserializes JSON to EnrichedClinicalMessage using Jackson
      */
     @JmsListener(destination = "${lab.results.queue.name}")
-    public void processLabResult(Message message) {
+    public void processLabResult(EnrichedClinicalMessage enrichedMessage) {
         try {
-            if (!(message instanceof TextMessage textMessage)) {
-                log.warn("Received non-text message: {}", message.getClass().getSimpleName());
+            log.info("Received lab result message - ProcessingID: {}, DataType: {}", 
+                    enrichedMessage.getProcessingId(), enrichedMessage.getDataType());
+            
+            // Extract the original payload
+            var payload = enrichedMessage.getOriginalPayload();
+            if (payload == null) {
+                log.warn("No originalPayload found in enriched message - ProcessingID: {}", 
+                        enrichedMessage.getProcessingId());
                 return;
             }
-            
-            String messageBody = textMessage.getText();
-            String messageId = message.getJMSMessageID();
-            
-            log.info("Received lab result message - ID: {}, Body length: {}", 
-                    messageId, messageBody.length());
-            
-            // Parse the JSON message
-            ClinicalDataPayload payload = objectMapper.readValue(messageBody, ClinicalDataPayload.class);
             
             // Validate that this is actually a lab result
-            if (!payload.hasLabResult()) {
-                log.warn("Received message without lab result data - ID: {}, Type: {}", 
-                        payload.getMessageId(), payload.getDataType());
+            if (!"LAB_RESULT".equals(payload.getDataType()) || payload.getLabResult() == null) {
+                log.warn("Received message without lab result data - ProcessingID: {}, Type: {}", 
+                        enrichedMessage.getProcessingId(), payload.getDataType());
                 return;
             }
             
-            log.debug("Processing lab result - Patient: {}, Test: {}, Value: {}", 
+            log.info("Processing lab result - Patient: {}, Test: {}, Value: {}", 
                      payload.getLabResult().getPatientId(),
                      payload.getLabResult().getTestType(),
                      payload.getLabResult().getResultValue());
@@ -58,14 +54,10 @@ public class LabResultsConsumer {
             // Process the lab result
             processingService.processLabResult(payload);
             
-            log.info("Successfully processed lab result - Message ID: {}, Patient: {}, Test: {}", 
-                    payload.getMessageId(),
+            log.info("Successfully processed lab result - ProcessingID: {}, Patient: {}, Test: {}", 
+                    enrichedMessage.getProcessingId(),
                     payload.getLabResult().getPatientId(),
                     payload.getLabResult().getTestType());
-            
-        } catch (JMSException e) {
-            log.error("JMS error processing lab result message: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to process JMS message", e);
             
         } catch (Exception e) {
             log.error("Error processing lab result message: {}", e.getMessage(), e);

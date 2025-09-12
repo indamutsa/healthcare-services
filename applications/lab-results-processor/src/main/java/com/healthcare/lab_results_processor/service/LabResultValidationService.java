@@ -1,6 +1,6 @@
 package com.healthcare.lab_results_processor.service;
 
-import com.healthcare.lab_results_processor.dto.LabResultMessage;
+import com.healthcare.lab_results_processor.dto.LabResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +17,7 @@ public class LabResultValidationService {
     /**
      * Validate a lab result message
      */
-    public void validateLabResult(LabResultMessage labResult) {
+    public void validateLabResult(LabResult labResult) {
         List<String> errors = new ArrayList<>();
         
         // Validate patient ID
@@ -93,7 +93,7 @@ public class LabResultValidationService {
     /**
      * Validate test-specific value ranges
      */
-    private void validateTestSpecificRanges(LabResultMessage labResult, List<String> errors) {
+    private void validateTestSpecificRanges(LabResult labResult, List<String> errors) {
         String testType = labResult.getTestType();
         Double value = labResult.getResultValue();
         

@@ -1,7 +1,7 @@
 package com.healthcare.lab_results_processor.service;
 
 import com.healthcare.lab_results_processor.dto.ClinicalDataPayload;
-import com.healthcare.lab_results_processor.dto.LabResultMessage;
+import com.healthcare.lab_results_processor.dto.LabResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ public class LabResultsProcessingService {
     public void processLabResult(ClinicalDataPayload payload) {
         log.info("🔬 RECEIVED LAB RESULT - Message ID: {}", payload.getMessageId());
         
-        LabResultMessage labResult = payload.getLabResult();
+        LabResult labResult = payload.getLabResult();
         
         try {
             // Step 1: Validate the lab result
@@ -46,7 +46,7 @@ public class LabResultsProcessingService {
      * Print the consumed lab result data
      */
     private void printLabResultData(ClinicalDataPayload payload) {
-        LabResultMessage labResult = payload.getLabResult();
+        LabResult labResult = payload.getLabResult();
         
         log.info("=================================================");
         log.info("📊 LAB RESULT DATA CONSUMED FROM QUEUE:");
