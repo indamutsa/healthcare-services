@@ -1,7 +1,7 @@
 package com.healthcare.clinical_data_gateway.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -10,7 +10,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 
 /**
  * Main payload for clinical trial data.
@@ -24,29 +23,35 @@ import java.time.LocalDateTime;
 public class ClinicalDataPayload {
     
     @NotBlank(message = "Message ID is required")
+    @JsonProperty("message_id")
     private String messageId;
     
     @NotNull(message = "Timestamp is required")
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-    private LocalDateTime timestamp;
+    private String timestamp;
     
     @NotBlank(message = "Study phase is required")
+    @JsonProperty("study_phase")
     private String studyPhase;
     
     @NotBlank(message = "Site ID is required")
+    @JsonProperty("site_id")
     private String siteId;
     
     // Optional clinical data - only one should be present per message
     @Valid
+    @JsonProperty("patient_demographics")
     private PatientDemographics patientDemographics;
     
     @Valid
+    @JsonProperty("vital_signs")
     private VitalSigns vitalSigns;
     
     @Valid
+    @JsonProperty("lab_result")
     private LabResult labResult;
     
     @Valid
+    @JsonProperty("adverse_event")
     private AdverseEvent adverseEvent;
     
     /**

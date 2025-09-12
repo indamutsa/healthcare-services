@@ -1,57 +1,40 @@
-package com.healthcare.clinical_data_gateway.dto;
+package com.healthcare.lab_results_processor.dto;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-
 /**
- * Laboratory test result data
+ * Lab result message received from CLINICAL.LAB.RESULTS queue
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class LabResult {
+public class LabResultMessage {
     
-    @NotBlank(message = "Patient ID is required")
-    @Pattern(regexp = "^PT[A-Z0-9]{8}$", message = "Patient ID must follow format PT########")
     @JsonProperty("patient_id")
     private String patientId;
     
-    @NotBlank(message = "Test type is required")
-    @Pattern(regexp = "^(Blood Glucose|Cholesterol|Hemoglobin|White Blood Cell Count|Creatinine|Liver Enzyme \\(ALT\\))$",
-             message = "Invalid test type")
     @JsonProperty("test_type")
     private String testType;
     
-    @NotNull(message = "Result value is required")
-    @DecimalMin(value = "0.0", message = "Result value must be positive")
     @JsonProperty("result_value")
     private Double resultValue;
     
-    @NotBlank(message = "Unit is required")
     private String unit;
     
-    @NotBlank(message = "Reference range is required")
     @JsonProperty("reference_range")
     private String referenceRange;
     
-    @NotNull(message = "Test date is required")
     @JsonProperty("test_date")
     private String testDate;
     
-    @NotBlank(message = "Lab technician ID is required")
-    @Pattern(regexp = "^LAB[0-9]{4}$", message = "Lab technician ID must follow format LAB####")
     @JsonProperty("lab_technician_id")
     private String labTechnicianId;
     
-    @NotNull(message = "Abnormal flag is required")
     @JsonProperty("is_abnormal")
     private Boolean isAbnormal;
     

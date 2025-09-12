@@ -53,6 +53,34 @@ services:
     restart: unless-stopped
     networks: [clinical-network]
 
+  lab-results-processor:
+    build:
+      context: ./applications/lab-results-processor
+      dockerfile: Dockerfile
+    container_name: lab-processor
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-development}
+      - SERVER_PORT=8081
+      - IBM_MQ_QUEUE_MANAGER=${IBM_MQ_QUEUE_MANAGER:-CLINICAL_QM}
+      - IBM_MQ_CHANNEL=${IBM_MQ_CHANNEL:-DEV.APP.SVRCONN}
+      - IBM_MQ_CONNNAME=clinical-mq(1414)
+      - IBM_MQ_USER=${IBM_MQ_USER:-app}
+      - IBM_MQ_PASSWORD=${IBM_MQ_PASSWORD:-clinical123}
+      - IBM_MQ_USERAUTHENTICATIONMQCSP=${IBM_MQ_USERAUTHENTICATIONMQCSP:-true}
+    depends_on:
+      clinical-mq:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks: [clinical-network]
+
 networks:
   clinical-network:
     driver: bridge

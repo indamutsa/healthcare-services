@@ -1,6 +1,5 @@
 package com.healthcare.clinical_data_gateway.dto;
-
-import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -13,7 +12,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
 
 /**
  * Patient demographic information (anonymized for HIPAA compliance)
@@ -26,6 +24,7 @@ public class PatientDemographics {
     
     @NotBlank(message = "Patient ID is required")
     @Pattern(regexp = "^PT[A-Z0-9]{8}$", message = "Patient ID must follow format PT########")
+    @JsonProperty("patient_id")
     private String patientId;
     
     @NotNull(message = "Age is required")
@@ -43,19 +42,22 @@ public class PatientDemographics {
     @NotNull(message = "Weight is required")
     @DecimalMin(value = "30.0", message = "Weight must be at least 30 kg")
     @DecimalMax(value = "300.0", message = "Weight must be less than 300 kg")
+    @JsonProperty("weight_kg")
     private Double weightKg;
     
     @NotNull(message = "Height is required")
     @DecimalMin(value = "100.0", message = "Height must be at least 100 cm")
     @DecimalMax(value = "250.0", message = "Height must be less than 250 cm")
+    @JsonProperty("height_cm")
     private Double heightCm;
     
     @NotBlank(message = "Study ID is required")
+    @JsonProperty("study_id")
     private String studyId;
     
     @NotNull(message = "Enrollment date is required")
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
-    private LocalDateTime enrollmentDate;
+    @JsonProperty("enrollment_date")
+    private String enrollmentDate;
     
     /**
      * Calculate BMI from height and weight

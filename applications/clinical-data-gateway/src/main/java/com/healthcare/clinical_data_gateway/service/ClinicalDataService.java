@@ -11,8 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -167,7 +166,7 @@ public class ClinicalDataService {
         
         // Processing metadata
         enriched.put("processingId", processingId);
-        enriched.put("processedAt", LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        enriched.put("processedAt", Instant.now().toString());
         enriched.put("processedBy", "clinical-data-gateway");
         enriched.put("version", "1.0");
         
@@ -223,7 +222,7 @@ public class ClinicalDataService {
      * Generate unique processing ID
      */
     private String generateProcessingId() {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
         String uuid = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         return "PROC-" + timestamp + "-" + uuid;
     }

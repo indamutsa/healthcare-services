@@ -205,9 +205,26 @@ class ClinicalDataGenerator:
         
         config = test_configs[test_type]
         result_value = round(random.uniform(*config["range"]), 2)
-        
-        # Determine if result is abnormal (20% chance)
-        is_abnormal = random.random() < 0.2
+
+        # Determine abnormal flag based on service rules to avoid validation failures
+        def is_result_abnormal(tt: str, val: float) -> bool:
+            match tt:
+                case "Blood Glucose":
+                    return val < 70 or val > 100
+                case "Cholesterol":
+                    return val > 200
+                case "Hemoglobin":
+                    return val < 12 or val > 16
+                case "White Blood Cell Count":
+                    return val < 4500 or val > 11000
+                case "Creatinine":
+                    return val < 0.7 or val > 1.3
+                case "Liver Enzyme (ALT)":
+                    return val > 56
+                case _:
+                    return False
+
+        is_abnormal = is_result_abnormal(test_type, result_value)
         
         return LabResult(
             patient_id=patient_id,
@@ -237,18 +254,18 @@ class ClinicalDataGenerator:
         ]
         
         severity = random.choice(list(EventSeverity)).value
-        start_date = datetime.now() - timedelta(days=random.randint(0, 7))
+        start_date = (datetime.now() - timedelta(days=random.randint(0, 7))).isoformat()
         
         # 60% chance event has resolved
         end_date = None
         if random.random() < 0.6:
-            end_date = (start_date + timedelta(days=random.randint(1, 14))).isoformat()
+            end_date = (datetime.now() - timedelta(days=random.randint(0, 3))).isoformat()
         
         return AdverseEvent(
             patient_id=patient_id,
             event_description=random.choice(events),
             severity=severity,
-            start_date=start_date.isoformat(),
+            start_date=start_date,
             end_date=end_date,
             related_to_study_drug=random.random() < 0.3,  # 30% chance related to study drug
             action_taken=random.choice(actions)
