@@ -81,6 +81,23 @@ services:
     restart: unless-stopped
     networks: [clinical-network]
 
+  clinical-data-generator:
+    build:
+      context: .
+      dockerfile: operations/docker/clinical-data-generator/Dockerfile
+    container_name: clinical-data-generator
+    environment:
+      - GEN_ENDPOINT=http://clinical-gateway:8080
+      - GEN_MODE=${GEN_MODE:-random}
+      - GEN_INTERVAL=${GEN_INTERVAL:-1-5}
+      - GEN_COUNT=${GEN_COUNT:-0}
+      - GEN_DATA_TYPE=${GEN_DATA_TYPE:-random}
+      - GEN_START_DELAY=${GEN_START_DELAY:-30}
+    # Intentionally no hard dependency; container sleeps GEN_START_DELAY before sending
+    # Use on-failure so finite runs (GEN_COUNT>0) don't loop
+    restart: on-failure
+    networks: [clinical-network]
+
 networks:
   clinical-network:
     driver: bridge

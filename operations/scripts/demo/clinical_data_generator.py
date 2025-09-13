@@ -19,6 +19,8 @@ import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+import os
+from pathlib import Path
 import requests
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -364,29 +366,40 @@ class ClinicalDataSender:
 def main():
     """Main function to run the clinical data generator"""
     parser = argparse.ArgumentParser(description='Generate clinical trial data')
-    parser.add_argument('--endpoint', default='http://localhost:8080',
-                       help='Clinical data gateway endpoint URL')
-    parser.add_argument('--interval', default='1-5',
-                       help='Random interval range in seconds (e.g., 1-5)')
-    parser.add_argument('--count', type=int, default=0,
-                       help='Number of messages to send (0 for infinite)')
+    default_endpoint = os.getenv('GEN_ENDPOINT') or (
+        'http://clinical-gateway:8080' if Path('/.dockerenv').exists() else 'http://localhost:8080'
+    )
+    parser.add_argument('--endpoint', default=default_endpoint,
+                        help='Clinical data gateway endpoint URL')
+    parser.add_argument('--mode', choices=['random', 'fixed'], default=os.getenv('GEN_MODE', 'random'),
+                        help='Interval mode: random range or fixed seconds')
+    parser.add_argument('--interval', default=os.getenv('GEN_INTERVAL', '1-5'),
+                        help='Random interval range (e.g., 1-5) or fixed seconds when --mode=fixed')
+    parser.add_argument('--count', type=int, default=int(os.getenv('GEN_COUNT', '0')),
+                        help='Number of messages to send (0 for infinite)')
+    parser.add_argument('--data-type', choices=['random', 'vital_signs', 'lab_result', 'adverse_event', 'demographics'],
+                        default=os.getenv('GEN_DATA_TYPE', 'random'),
+                        help='Force a specific data type or random')
     parser.add_argument('--verbose', '-v', action='store_true',
-                       help='Enable verbose logging')
-    
+                        help='Enable verbose logging')
+
     args = parser.parse_args()
-    
-    if args.verbose:
+
+    if args.verbose or str(os.getenv('GEN_VERBOSE', '')).lower() in ('1', 'true', 'yes', 'y', 'on'):
         logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Parse interval range
+
+    # Parse interval configuration
     try:
-        interval_parts = args.interval.split('-')
-        if len(interval_parts) == 2:
-            min_interval, max_interval = map(int, interval_parts)
+        if args.mode == 'random':
+            parts = str(args.interval).split('-')
+            if len(parts) == 2:
+                min_interval, max_interval = map(float, parts)
+            else:
+                min_interval = max_interval = float(parts[0])
         else:
-            min_interval = max_interval = int(interval_parts[0])
+            min_interval = max_interval = float(args.interval)
     except ValueError:
-        logger.error("Invalid interval format. Use format like '5-15' or '10'")
+        logger.error("Invalid interval. For random use '5-15'; for fixed use '10'.")
         return
     
     generator = ClinicalDataGenerator()
@@ -394,16 +407,37 @@ def main():
     
     logger.info(f"🏥 Starting Clinical Data Generator")
     logger.info(f"📡 Endpoint: {args.endpoint}")
-    logger.info(f"⏱️  Interval: {min_interval}-{max_interval} seconds")
+    if args.mode == 'random':
+        logger.info(f"⏱️  Interval (random): {min_interval}-{max_interval} seconds")
+    else:
+        logger.info(f"⏱️  Interval (fixed): {min_interval} seconds")
     logger.info(f"📊 Messages: {'infinite' if args.count == 0 else args.count}")
+    if args.data_type != 'random':
+        logger.info(f"🔧 Forcing data type: {args.data_type}")
     
     message_count = 0
     success_count = 0
     
     try:
         while args.count == 0 or message_count < args.count:
-            # Generate clinical data payload
-            payload = generator.generate_clinical_payload()
+            # Generate clinical data payload (optionally force type)
+            if args.data_type == 'random':
+                payload = generator.generate_clinical_payload()
+            else:
+                payload = ClinicalDataPayload(
+                    message_id=str(uuid.uuid4()),
+                    timestamp=datetime.now().isoformat(),
+                    study_phase=random.choice(list(StudyPhase)).value,
+                    site_id=random.choice(generator.study_sites)
+                )
+                if args.data_type == 'vital_signs':
+                    payload.vital_signs = generator.generate_vital_signs()
+                elif args.data_type == 'lab_result':
+                    payload.lab_result = generator.generate_lab_result()
+                elif args.data_type == 'adverse_event':
+                    payload.adverse_event = generator.generate_adverse_event()
+                elif args.data_type == 'demographics':
+                    payload.patient_demographics = generator.generate_patient_demographics()
             
             # Send to REST API
             if sender.send_data(payload):
@@ -419,7 +453,10 @@ def main():
             
             # Wait for random interval
             if args.count == 0 or message_count < args.count:
-                wait_time = random.randint(min_interval, max_interval)
+                if args.mode == 'random':
+                    wait_time = random.uniform(min_interval, max_interval)
+                else:
+                    wait_time = min_interval
                 logger.debug(f"⏳ Waiting {wait_time} seconds...")
                 time.sleep(wait_time)
     
