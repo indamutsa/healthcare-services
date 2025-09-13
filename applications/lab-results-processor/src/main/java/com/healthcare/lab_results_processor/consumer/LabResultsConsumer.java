@@ -26,38 +26,39 @@ public class LabResultsConsumer {
      * Spring automatically deserializes JSON to EnrichedClinicalMessage using Jackson
      */
     @JmsListener(destination = "${lab.results.queue.name}")
-    public void processLabResult(EnrichedClinicalMessage enrichedMessage) {
+    public void processLabResult(String message) {
         try {
-            log.info("Received lab result message - ProcessingID: {}, DataType: {}", 
-                    enrichedMessage.getProcessingId(), enrichedMessage.getDataType());
+            System.out.println("Hello world =====>>>>> : " + message);
+            // log.info("Received lab result message - ProcessingID: {}, DataType: {}", 
+            //         enrichedMessage.getProcessingId(), enrichedMessage.getDataType());
             
-            // Extract the original payload
-            var payload = enrichedMessage.getOriginalPayload();
-            if (payload == null) {
-                log.warn("No originalPayload found in enriched message - ProcessingID: {}", 
-                        enrichedMessage.getProcessingId());
-                return;
-            }
+            // // Extract the original payload
+            // var payload = enrichedMessage.getOriginalPayload();
+            // if (payload == null) {
+            //     log.warn("No originalPayload found in enriched message - ProcessingID: {}", 
+            //             enrichedMessage.getProcessingId());
+            //     return;
+            // }
             
-            // Validate that this is actually a lab result
-            if (!"LAB_RESULT".equals(payload.getDataType()) || payload.getLabResult() == null) {
-                log.warn("Received message without lab result data - ProcessingID: {}, Type: {}", 
-                        enrichedMessage.getProcessingId(), payload.getDataType());
-                return;
-            }
+            // // Validate that this is actually a lab result
+            // if (!"LAB_RESULT".equals(payload.getDataType()) || payload.getLabResult() == null) {
+            //     log.warn("Received message without lab result data - ProcessingID: {}, Type: {}", 
+            //             enrichedMessage.getProcessingId(), payload.getDataType());
+            //     return;
+            // }
             
-            log.info("Processing lab result - Patient: {}, Test: {}, Value: {}", 
-                     payload.getLabResult().getPatientId(),
-                     payload.getLabResult().getTestType(),
-                     payload.getLabResult().getResultValue());
+            // log.info("Processing lab result - Patient: {}, Test: {}, Value: {}", 
+            //          payload.getLabResult().getPatientId(),
+            //          payload.getLabResult().getTestType(),
+            //          payload.getLabResult().getResultValue());
             
-            // Process the lab result
-            processingService.processLabResult(payload);
+            // // Process the lab result
+            // processingService.processLabResult(payload);
             
-            log.info("Successfully processed lab result - ProcessingID: {}, Patient: {}, Test: {}", 
-                    enrichedMessage.getProcessingId(),
-                    payload.getLabResult().getPatientId(),
-                    payload.getLabResult().getTestType());
+            // log.info("Successfully processed lab result - ProcessingID: {}, Patient: {}, Test: {}", 
+            //         enrichedMessage.getProcessingId(),
+            //         payload.getLabResult().getPatientId(),
+            //         payload.getLabResult().getTestType());
             
         } catch (Exception e) {
             log.error("Error processing lab result message: {}", e.getMessage(), e);

@@ -50,6 +50,7 @@ apk add --no-cache \
     tree \
     unzip \
     tar \
+    github-cli \
     gzip \
     ca-certificates \
     openssl \
