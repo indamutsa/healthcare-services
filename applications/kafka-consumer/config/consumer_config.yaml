@@ -1,0 +1,35 @@
+# Kafka Consumer Configuration
+kafka:
+  group_id: clinical-consumer-group
+  auto_offset_reset: earliest  # Start from beginning if no offset
+  enable_auto_commit: false    # Manual commit for better control
+  max_poll_records: 1000       # Max records per poll
+
+# Topics to consume from
+topics:
+  - patient-vitals
+  - lab-results
+  - medications
+  - adverse-events
+
+# Batching configuration
+batching:
+  max_batch_size: 1000         # Write batch when reaching this size
+  max_wait_seconds: 30         # Or after this many seconds
+  flush_on_shutdown: true      # Ensure data written on graceful shutdown
+
+# S3/MinIO storage configuration
+storage:
+  bucket: clinical-mlops
+  prefix: raw/                 # Bronze layer prefix
+  partition_by:
+    - date                     # Partition by date (YYYY-MM-DD)
+    - hour                     # Partition by hour (HH)
+  file_format: json            # Can be: json, jsonl, parquet
+  compression: none            # Can be: none, gzip, snappy
+
+# Error handling
+error_handling:
+  max_retries: 3
+  retry_backoff_seconds: 5
+  dead_letter_queue: false     # For now, just log errors

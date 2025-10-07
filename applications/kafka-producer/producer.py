@@ -304,65 +304,62 @@ class ClinicalKafkaProducer:
     
     def run(self):
         """
-        Main producer loop.
-        Generates and sends messages continuously at specified rate.
+        Main producer loop with:
+        - Random sleep (1–10s) between batches
+        - 1-hour pause after every 1000 messages
         """
-        logger.info("🚀 Starting clinical data generation...")
+        logger.info("🚀 Starting clinical data generation (randomized intervals + hourly pause)...")
         message_count = 0
         stats = {"vitals": 0, "medications": 0, "labs": 0, "adverse_events": 0}
-        
+
         try:
             while True:
                 start_time = time.time()
-                
-                # Generate messages for this second
-                for _ in range(self.message_rate):
-                    # Select message type based on distribution
+
+                # Randomize message rate ±20%
+                dynamic_rate = int(self.message_rate * random.uniform(0.8, 1.2))
+
+                for _ in range(dynamic_rate):
                     rand = random.randint(1, 100)
-                    
+
                     if rand <= self.distribution["vitals"]:
-                        # 70% vitals
                         message = self.generator.generate_vitals()
                         topic = self.topics["vitals"]
                         stats["vitals"] += 1
                     elif rand <= self.distribution["vitals"] + self.distribution["medications"]:
-                        # 20% medications
                         message = self.generator.generate_medication()
                         topic = self.topics["medications"]
                         stats["medications"] += 1
-                    elif rand <= (self.distribution["vitals"] + 
-                                 self.distribution["medications"] + 
-                                 self.distribution["labs"]):
-                        # 9% labs
+                    elif rand <= (self.distribution["vitals"] +
+                                self.distribution["medications"] +
+                                self.distribution["labs"]):
                         message = self.generator.generate_lab_result()
                         topic = self.topics["labs"]
                         stats["labs"] += 1
                     else:
-                        # 1% adverse events
                         message = self.generator.generate_adverse_event()
                         topic = self.topics["adverse_events"]
                         stats["adverse_events"] += 1
-                    
+
                     self.send_message(topic, message)
                     message_count += 1
-                
-                # Log progress every 1000 messages
-                if message_count % 1000 == 0:
-                    logger.info(
-                        f"📊 Sent {message_count} messages | "
-                        f"Vitals: {stats['vitals']}, "
-                        f"Meds: {stats['medications']}, "
-                        f"Labs: {stats['labs']}, "
-                        f"Adverse: {stats['adverse_events']}"
-                    )
-                
-                # Sleep to maintain target rate
-                elapsed = time.time() - start_time
-                sleep_time = max(0, 1.0 - elapsed)
+
+                    # After every 1000 messages, pause for one hour
+                    if message_count % 1000 == 0:
+                        logger.info(
+                            f"⏸️  Reached {message_count} messages. "
+                            f"Pausing for 1 hour (simulating site downtime)..."
+                        )
+                        time.sleep(3600)  # 1 hour pause
+                        logger.info("✅ Resuming data generation...")
+
+                # Random delay between 1–10 seconds between bursts
+                sleep_time = random.uniform(1, 10)
+                logger.debug(f"Sleeping for {sleep_time:.2f}s before next batch...")
                 time.sleep(sleep_time)
-                
+
         except KeyboardInterrupt:
-            logger.info("⏸️  Shutting down producer...")
+            logger.info("🛑 Interrupted by user. Shutting down producer...")
         finally:
             self.producer.flush()
             self.producer.close()
@@ -373,6 +370,8 @@ class ClinicalKafkaProducer:
                 f"Labs: {stats['labs']}, "
                 f"Adverse: {stats['adverse_events']}"
             )
+
+
 
 
 # =============================================================================
