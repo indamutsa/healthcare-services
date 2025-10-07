@@ -1,0 +1,49 @@
+# ML-specific ignores (append to your existing .gitignore)
+
+# Data files
+data/raw/*
+data/processed/*
+data/features/*
+data/models/*
+data/artifacts/*
+!data/**/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# DVC
+*.dvc
+.dvc/cache
+.dvc/tmp
+
+# Airflow
+airflow/logs/
+airflow/*.pid
+airflow/*.log
+airflow/*.db
+
+# Notebooks
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Python
+*.pyc
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Environment
+.env
+*.env
+!*.env.template
+
+# Models
+*.pth
+*.pkl
+*.h5
+*.onnx
+
+# Logs
+*.log
+logs/
