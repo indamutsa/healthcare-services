@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "patient_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "heart_rate": {"type": "integer", "minimum": 40, "maximum": 200},
+    "blood_pressure_systolic": {"type": "integer", "minimum": 60, "maximum": 250},
+    "blood_pressure_diastolic": {"type": "integer", "minimum": 40, "maximum": 150},
+    "temperature": {"type": "number", "minimum": 35.0, "maximum": 42.0},
+    "spo2": {"type": "integer", "minimum": 70, "maximum": 100},
+    "source": {"type": "string"}
+  },
+  "required": ["patient_id", "timestamp", "heart_rate", "blood_pressure_systolic", "blood_pressure_diastolic", "temperature", "spo2", "source"]
+}

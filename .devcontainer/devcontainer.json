@@ -22,31 +22,3 @@
     }
   }
 }
-
-
-
-// {
-//   "name": "Alpine",
-//   "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20",
-
-//   "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
-
-//   "mounts": [
-//     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
-//     "source=${localEnv:HOME}/projects/personal-projects/scripts,target=/scripts,type=bind"
-//   ],
-
-//   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
-//   "workspaceFolder": "/workspaces/clinical-trials-service",
-
-//   "postCreateCommand": "apk add docker docker-compose zsh git curl && chsh -s /bin/zsh && /scripts/alpine-setup.sh && /scripts/enhance-terminal.sh && /scripts/setup-clipboard.sh",
-
-//   "remoteUser": "root",
-//   "forwardPorts": [8080, 3000, 5173],
-//   "portsAttributes": {
-//     "8080": {
-//       "label": "Spring Boot App",
-//       "onAutoForward": "openBrowser"
-//     }
-//   }
-// }

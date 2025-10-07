@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "patient_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "test_name": {"type": "string"},
+    "value": {"type": "number"},
+    "unit": {"type": "string"},
+    "reference_range": {"type": "string"},
+    "lab_id": {"type": "string"}
+  },
+  "required": ["patient_id", "timestamp", "test_name", "value", "unit", "lab_id"]
+}

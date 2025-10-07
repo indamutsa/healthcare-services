@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "patient_id": {"type": "string"},
+    "event_timestamp": {"type": "string", "format": "date-time"},
+    "event_type": {"type": "string"},
+    "severity": {"type": "string"},
+    "reported_by": {"type": "string"},
+    "report_timestamp": {"type": "string", "format": "date-time"}
+  },
+  "required": ["patient_id", "event_timestamp", "event_type", "severity", "reported_by", "report_timestamp"]
+}
