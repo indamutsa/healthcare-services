@@ -350,7 +350,7 @@ class ClinicalKafkaProducer:
                             f"⏸️  Reached {message_count} messages. "
                             f"Pausing for 1 hour (simulating site downtime)..."
                         )
-                        time.sleep(3600)  # 1 hour pause
+                        time.sleep(120)  # 2 minutes pause
                         logger.info("✅ Resuming data generation...")
 
                 # Random delay between 1–10 seconds between bursts

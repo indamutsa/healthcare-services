@@ -74,6 +74,12 @@ docker ps --format "table {{.Names}}\t{{.Ports}}" | grep -E "(kafka|minio|spark|
 print_header "Resource Usage"
 docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" | head -20
 
+
+
+docker logs kafka-producer --tail 20
+docker logs kafka-consumer --tail 20
+
+
 echo ""
 echo -e "${GREEN}✅ Status check complete!${NC}"
 echo ""
