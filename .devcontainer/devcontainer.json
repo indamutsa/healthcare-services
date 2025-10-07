@@ -1,6 +1,12 @@
 {
+<<<<<<< HEAD
   "name": "Ubuntu Dev Container",
   "image": "ubuntu:22.04",
+=======
+  "name": "Alpine",
+  "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20",
+
+>>>>>>> 8490ddb8b9897442efde03ee59399360e4a2c008
   "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
 
   "mounts": [
@@ -11,7 +17,11 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
   "workspaceFolder": "/workspaces/clinical-trials-service",
 
+<<<<<<< HEAD
   "postCreateCommand": "apt-get update && apt-get install -y docker.io docker-compose && /scripts/setup.sh ",
+=======
+  "postCreateCommand": "apk add docker docker-compose zsh git curl && chsh -s /bin/zsh && /scripts/alpine-setup.sh && /scripts/enhance-terminal.sh && /scripts/setup-clipboard.sh",
+>>>>>>> 8490ddb8b9897442efde03ee59399360e4a2c008
 
   "remoteUser": "root",
   "forwardPorts": [8080, 3000, 5173],
