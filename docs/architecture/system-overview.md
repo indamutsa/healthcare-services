@@ -75,10 +75,10 @@ A **production-ready MLOps platform** with complete data pipeline, monitoring, a
 
 ```bash
 # Start everything (data pipeline + monitoring)
-docker-compose up -d
+docker compose up -d
 
 # Verify all services
-docker-compose ps
+docker compose ps
 
 # Expected services running:
 # - minio, kafka, zookeeper
@@ -94,19 +94,19 @@ docker-compose ps
 
 ```bash
 # Start Airflow
-docker-compose --profile airflow up -d airflow-webserver airflow-scheduler
+docker compose --profile airflow up -d airflow-webserver airflow-scheduler
 
 # Run Spark processing job
-docker-compose --profile spark-job up spark-processor
+docker compose --profile spark-job up spark-processor
 
 # Start feature engineering
-docker-compose --profile feature-engineering up feature-engineering
+docker compose --profile feature-engineering up feature-engineering
 
 # Start model training
-docker-compose --profile training up ml-training
+docker compose --profile training up ml-training
 
 # Start model serving
-docker-compose --profile serving up -d model-serving
+docker compose --profile serving up -d model-serving
 ```
 
 ---
@@ -179,7 +179,7 @@ clinical-mlops/
 │   ├── test-complete-pipeline.sh
 │   └── run-spark-job.sh
 │
-├── docker-compose.yml
+├── docker compose.yml
 └── .env
 ```
 
@@ -425,16 +425,16 @@ component: "kafka-consumer" AND lag > 1000
 
 ```bash
 # Check service health
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f <service-name>
+docker compose logs -f <service-name>
 
 # Restart a service
-docker-compose restart <service-name>
+docker compose restart <service-name>
 
 # Run Spark job (hourly)
-docker-compose exec spark-master spark-submit \
+docker compose exec spark-master spark-submit \
   --master spark://spark-master:7077 \
   --packages org.apache.hadoop:hadoop-aws:3.3.4 \
   --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
@@ -449,10 +449,10 @@ docker-compose exec spark-master spark-submit \
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (clean slate)
-docker-compose down -v
+docker compose down -v
 
 # Clean old Elasticsearch indices
 curl -X DELETE "http://localhost:9200/mlops-*-$(date -d '7 days ago' +%Y.%m.%d)"
@@ -573,14 +573,14 @@ print_header "Starting ELK Stack"
 
 # Step 1: Start Elasticsearch
 print_info "Step 1: Starting Elasticsearch..."
-docker-compose up -d elasticsearch
+docker compose up -d elasticsearch
 
 print_info "Waiting for Elasticsearch to be healthy (this may take 60 seconds)..."
 sleep 10
 
 # Wait for Elasticsearch health check
 for i in {1..12}; do
-    if docker-compose ps elasticsearch | grep -q "healthy"; then
+    if docker compose ps elasticsearch | grep -q "healthy"; then
         print_status "Elasticsearch is healthy"
         break
     fi
@@ -592,33 +592,33 @@ done
 if curl -s http://localhost:9200/_cluster/health > /dev/null 2>&1; then
     print_status "Elasticsearch API is responding"
 else
-    echo "❌ Elasticsearch is not responding. Check logs: docker-compose logs elasticsearch"
+    echo "❌ Elasticsearch is not responding. Check logs: docker compose logs elasticsearch"
     exit 1
 fi
 
 # Step 2: Start Logstash
 print_info "Step 2: Starting Logstash..."
-docker-compose up -d logstash
+docker compose up -d logstash
 
 print_info "Waiting for Logstash to start (30 seconds)..."
 sleep 30
 
-if docker-compose ps logstash | grep -q "Up"; then
+if docker compose ps logstash | grep -q "Up"; then
     print_status "Logstash is running"
 else
-    echo "❌ Logstash failed to start. Check logs: docker-compose logs logstash"
+    echo "❌ Logstash failed to start. Check logs: docker compose logs logstash"
     exit 1
 fi
 
 # Step 3: Start Kibana
 print_info "Step 3: Starting Kibana..."
-docker-compose up -d kibana
+docker compose up -d kibana
 
 print_info "Waiting for Kibana to be healthy (this may take 30 seconds)..."
 sleep 10
 
 for i in {1..6}; do
-    if docker-compose ps kibana | grep -q "healthy"; then
+    if docker compose ps kibana | grep -q "healthy"; then
         print_status "Kibana is healthy"
         break
     fi
@@ -628,14 +628,14 @@ done
 
 # Step 4: Start Filebeat
 print_info "Step 4: Starting Filebeat (log shipper)..."
-docker-compose up -d filebeat
+docker compose up -d filebeat
 
 sleep 5
 
-if docker-compose ps filebeat | grep -q "Up"; then
+if docker compose ps filebeat | grep -q "Up"; then
     print_status "Filebeat is running"
 else
-    echo "❌ Filebeat failed to start. Check logs: docker-compose logs filebeat"
+    echo "❌ Filebeat failed to start. Check logs: docker compose logs filebeat"
     exit 1
 fi
 
@@ -686,10 +686,10 @@ echo "   - log_level: \"ERROR\""
 echo ""
 
 print_info "View ELK logs:"
-echo "  docker-compose logs -f elasticsearch"
-echo "  docker-compose logs -f logstash"
-echo "  docker-compose logs -f kibana"
-echo "  docker-compose logs -f filebeat"
+echo "  docker compose logs -f elasticsearch"
+echo "  docker compose logs -f logstash"
+echo "  docker compose logs -f kibana"
+echo "  docker compose logs -f filebeat"
 echo ""
 
 print_status "🎉 ELK Stack is ready!"
@@ -743,22 +743,22 @@ mkdir -p monitoring/elk/filebeat
 
 ```bash
 # Start Elasticsearch first
-docker-compose up -d elasticsearch
+docker compose up -d elasticsearch
 
 # Wait for Elasticsearch to be healthy (60 seconds)
 sleep 60
 
 # Start Logstash
-docker-compose up -d logstash
+docker compose up -d logstash
 
 # Wait for Logstash (30 seconds)
 sleep 30
 
 # Start Kibana
-docker-compose up -d kibana
+docker compose up -d kibana
 
 # Start Filebeat (log shipper)
-docker-compose up -d filebeat
+docker compose up -d filebeat
 ```
 
 ### 4. Access Kibana
@@ -832,7 +832,7 @@ curl http://localhost:9600/_node/stats/pipelines?pretty
 
 ```bash
 # View Filebeat logs
-docker-compose logs filebeat | tail -50
+docker compose logs filebeat | tail -50
 
 # Should see:
 # "INFO Harvester started for file..."
@@ -1015,14 +1015,14 @@ mlops-serving-YYYY.MM.DD  # Model serving API logs
 
 ```bash
 # Check logs
-docker-compose logs elasticsearch
+docker compose logs elasticsearch
 
 # Common issues:
 # 1. Not enough memory
 # Solution: Increase Docker memory limit to 4GB
 
 # 2. Port 9200 already in use
-# Solution: Change port in docker-compose.yml
+# Solution: Change port in docker compose.yml
 
 # 3. Disk space
 # Solution: Clean up old indices
@@ -1033,16 +1033,16 @@ curl -X DELETE "http://localhost:9200/mlops-logs-2025.09.*"
 
 ```bash
 # Check Filebeat is running
-docker-compose logs filebeat
+docker compose logs filebeat
 
 # Check Filebeat is sending to Logstash
-docker-compose logs logstash | grep "filebeat"
+docker compose logs logstash | grep "filebeat"
 
 # Check Elasticsearch is receiving data
 curl http://localhost:9200/_cat/indices?v
 
 # Manually test Logstash pipeline
-docker-compose exec logstash bash
+docker compose exec logstash bash
 echo '{"message": "test"}' | nc localhost 5000
 ```
 
@@ -1050,17 +1050,17 @@ echo '{"message": "test"}' | nc localhost 5000
 
 ```bash
 # Check Elasticsearch is accessible from Kibana
-docker-compose exec kibana curl http://elasticsearch:9200
+docker compose exec kibana curl http://elasticsearch:9200
 
 # Check environment variables
-docker-compose exec kibana env | grep ELASTICSEARCH
+docker compose exec kibana env | grep ELASTICSEARCH
 ```
 
 ### Filebeat Permission Denied
 
 ```bash
 # Filebeat needs access to Docker socket
-# Ensure in docker-compose.yml:
+# Ensure in docker compose.yml:
 #   user: root
 #   volumes:
 #     - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -1073,7 +1073,7 @@ docker-compose exec kibana env | grep ELASTICSEARCH
 ### For High Log Volume
 
 ```yaml
-# elasticsearch service in docker-compose.yml
+# elasticsearch service in docker compose.yml
 environment:
   - "ES_JAVA_OPTS=-Xms1g -Xmx1g"  # Increase heap
 
@@ -1188,7 +1188,7 @@ chmod +x scripts/cleanup-old-logs.sh
 
 ## Next Steps
 
-1. ✅ **Start ELK Stack**: `docker-compose up -d elasticsearch logstash kibana filebeat`
+1. ✅ **Start ELK Stack**: `docker compose up -d elasticsearch logstash kibana filebeat`
 2. ✅ **Create Index Patterns** in Kibana
 3. ✅ **Explore Logs** in Discover
 4. ✅ **Create Dashboards** for each component
@@ -2729,7 +2729,7 @@ dvc push
 clinical-mlops/
 ├── README.md
 ├── requirements.txt
-├── docker-compose.yml                    # Orchestrates all services
+├── docker compose.yml                    # Orchestrates all services
 │
 ├── applications/
 │   ├── README.md

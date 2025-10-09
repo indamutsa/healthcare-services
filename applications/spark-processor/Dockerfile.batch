@@ -1,0 +1,21 @@
+FROM apache/spark:3.5.4-java17
+
+USER root
+
+# Copy application code
+COPY jobs /opt/spark/work-dir/jobs
+COPY transformations /opt/spark/work-dir/transformations
+COPY utils /opt/spark/work-dir/utils
+
+# Set working directory
+WORKDIR /opt/spark/work-dir
+
+# Copy the loop entrypoint
+COPY entrypoint.sh /opt/spark/entrypoint.sh
+RUN chmod +x /opt/spark/entrypoint.sh
+
+# Set default environment variable for interval (in minutes)
+ENV INTERVAL_MINUTES=60
+
+# Use looping entrypoint (this already calls spark-submit internally)
+ENTRYPOINT ["/opt/spark/entrypoint.sh"]

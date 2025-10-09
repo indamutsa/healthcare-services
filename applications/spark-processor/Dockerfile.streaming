@@ -1,0 +1,26 @@
+FROM apache/spark:3.5.4-java17
+
+USER root
+
+# Copy application code
+COPY jobs /opt/spark/work-dir/jobs
+COPY transformations /opt/spark/work-dir/transformations
+COPY utils /opt/spark/work-dir/utils
+
+# Set working directory
+WORKDIR /opt/spark/work-dir
+
+# Run streaming job
+CMD ["/opt/spark/bin/spark-submit", \
+     "--master", "spark://spark-master:7077", \
+     "--deploy-mode", "client", \
+     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4", \
+     "--conf", "spark.executor.memory=1g", \
+     "--conf", "spark.executor.cores=1", \
+     "--conf", "spark.hadoop.fs.s3a.endpoint=http://minio:9000", \
+     "--conf", "spark.hadoop.fs.s3a.access.key=minioadmin", \
+     "--conf", "spark.hadoop.fs.s3a.secret.key=minioadmin", \
+     "--conf", "spark.hadoop.fs.s3a.path.style.access=true", \
+     "--conf", "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem", \
+     "--conf", "spark.hadoop.fs.s3a.connection.ssl.enabled=false", \
+     "/opt/spark/work-dir/jobs/bronze_to_silver_streaming.py"]

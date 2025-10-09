@@ -36,7 +36,7 @@ chmod +x alpine-setup.sh
 source .pyenv/bin/activate
 
 # Start IBM MQ container
-docker-compose up -d
+docker compose up -d
 
 # Build and run Clinical Data Gateway
 cd applications/clinical-data-gateway

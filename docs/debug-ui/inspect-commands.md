@@ -214,7 +214,7 @@ docker ps -a --format '{{.Label "com.docker.compose.project"}}' | sort -u
 
 ---
 
-### **Method 3: Check from docker-compose.yml Directory**
+### **Method 3: Check from docker compose.yml Directory**
 
 ```bash
 # Docker Compose uses the directory name as default project name
@@ -223,7 +223,7 @@ basename $(pwd)
 
 **Or explicitly check:**
 ```bash
-docker-compose ps --format json | jq -r '.[0].Labels."com.docker.compose.project"' | head -1
+docker compose ps --format json | jq -r '.[0].Labels."com.docker.compose.project"' | head -1
 ```
 
 ---
@@ -239,7 +239,7 @@ docker inspect kafka --format='{{json .Config.Labels}}' | jq
 ```json
 {
   "com.docker.compose.project": "clinical-trials-service",
-  "com.docker.compose.project.config_files": "/workspaces/clinical-trials-service/docker-compose.yml",
+  "com.docker.compose.project.config_files": "/workspaces/clinical-trials-service/docker compose.yml",
   "com.docker.compose.project.working_dir": "/workspaces/clinical-trials-service",
   "com.docker.compose.service": "kafka",
   "com.docker.compose.version": "2.23.0"
@@ -275,19 +275,19 @@ If you want to set a specific project name:
 
 ### **Option 1: Use `-p` flag**
 ```bash
-docker-compose -p clinical-mlops up -d
+docker compose -p clinical-mlops up -d
 ```
 
 ### **Option 2: Set environment variable**
 ```bash
 export COMPOSE_PROJECT_NAME=clinical-mlops
-docker-compose up -d
+docker compose up -d
 ```
 
 ### **Option 3: Add to .env file**
 ```bash
 echo "COMPOSE_PROJECT_NAME=clinical-mlops" >> .env
-docker-compose up -d
+docker compose up -d
 ```
 
 ---

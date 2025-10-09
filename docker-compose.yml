@@ -36,7 +36,7 @@ services:
     networks:
       - mlops-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -354,11 +354,11 @@ services:
     restart: on-failure
     networks:
       - mlops-network
-
-  # ============================================================================
-  # SPARK CLUSTER (Updated with official Apache images)
-  # ============================================================================
   
+  # ============================================================================
+  # SPARK CLUSTER
+  # ============================================================================
+
   spark-master:
     image: apache/spark:3.5.4-java17
     container_name: spark-master
@@ -371,11 +371,9 @@ services:
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
     ports:
-      - "8080:8080"  # Spark Master UI
-      - "7077:7077"  # Spark Master Port
-    volumes:
-      - ./applications/spark-processor/jobs:/opt/spark/work-dir/jobs
-      - spark-logs:/opt/spark/logs
+      - "8080:8080"  # Spark Master Web UI
+      - "7077:7077"  # Spark Master RPC port (for workers/jobs)
+      - "6066:6066"  # Optional REST submission port
     networks:
       - mlops-network
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
@@ -402,9 +400,8 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
-    volumes:
-      - ./applications/spark-processor/jobs:/opt/spark/work-dir/jobs
-      - spark-logs:/opt/spark/logs
+    ports:
+      - "8081:8081" # Spark Worker Web UI
     networks:
       - mlops-network
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
@@ -414,43 +411,50 @@ services:
       timeout: 10s
       retries: 3
 
-  # Spark job runner (on-demand execution)
-  spark-processor:
-    image: apache/spark:3.5.4-java17
-    container_name: spark-processor
-    user: root
+  # Streaming processor with code copied at build time
+  spark-streaming:
+    build:
+      context: ./applications/spark-processor
+      dockerfile: Dockerfile.streaming
+    container_name: spark-streaming
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET=clinical-mlops
+    networks:
+      - mlops-network
+    restart: unless-stopped
+
+  # Batch processor with code copied at build time
+  spark-batch:
+    build:
+      context: ./applications/spark-processor
+      dockerfile: Dockerfile.batch
+    container_name: spark-batch
     depends_on:
       spark-master:
         condition: service_healthy
       minio:
         condition: service_healthy
     environment:
-      - SPARK_MASTER_URL=spark://spark-master:7077
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin
       - S3_BUCKET=clinical-mlops
       - PROCESS_HOURS=1
-    volumes:
-      - ./applications/spark-processor/jobs:/opt/spark/work-dir/jobs
     networks:
       - mlops-network
     profiles:
-      - spark-job
-    command: >
-      /opt/spark/bin/spark-submit
-        --master spark://spark-master:7077
-        --deploy-mode client
-        --conf spark.executor.memory=2g
-        --conf spark.executor.cores=2
-        --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000
-        --conf spark.hadoop.fs.s3a.access.key=minioadmin
-        --conf spark.hadoop.fs.s3a.secret.key=minioadmin
-        --conf spark.hadoop.fs.s3a.path.style.access=true
-        --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
-        --conf spark.hadoop.fs.s3a.connection.ssl.enabled=false
-        --packages org.apache.hadoop:hadoop-aws:3.3.4
-        /opt/spark/work-dir/jobs/bronze_to_silver.py
+      - batch-job
 
   feature-engineering:
     build:
