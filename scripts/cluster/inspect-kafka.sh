@@ -56,3 +56,5 @@ echo -e "${GREEN}✅ Kafka inspection complete!${NC}"
 echo ""
 echo "To view live messages: docker exec -it kafka bash"
 echo "Then run: kafka-console-consumer --bootstrap-server $BS --topic patient-vitals"
+
+

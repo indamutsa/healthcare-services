@@ -348,13 +348,13 @@ class ClinicalKafkaProducer:
                     if message_count % 1000 == 0:
                         logger.info(
                             f"⏸️  Reached {message_count} messages. "
-                            f"Pausing for 1 hour (simulating site downtime)..."
+                            f"Pausing for 2 minutes (simulating site downtime)..."
                         )
                         time.sleep(120)  # 2 minutes pause
                         logger.info("✅ Resuming data generation...")
 
                 # Random delay between 1–10 seconds between bursts
-                sleep_time = random.uniform(1, 10)
+                sleep_time = random.uniform(5, 10)
                 logger.debug(f"Sleeping for {sleep_time:.2f}s before next batch...")
                 time.sleep(sleep_time)
 

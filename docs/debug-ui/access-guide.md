@@ -23,19 +23,19 @@ Here's your consolidated guide with all UIs, verification steps, and CLI command
 
 ---
 
-## 🔥 **Updated docker-compose.yml** (Add Kafka UI)
+## 🔥 **Updated docker compose.yml** (Add Kafka UI)
 
 ## 🚀 **Start Everything**
 
 ```bash
 # Start core infrastructure
-docker-compose up -d
+docker compose up -d
 
 # Check all services are running
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f kafka-producer kafka-consumer
+docker compose logs -f kafka-producer kafka-consumer
 ```
 
 ---
@@ -365,7 +365,7 @@ docker run --rm --network clinical-mlops_mlops-network \
 
 ```bash
 # 1. Start everything
-docker-compose up -d
+docker compose up -d
 
 # 2. Wait for services to be healthy (30 seconds)
 sleep 30
@@ -388,6 +388,32 @@ open http://localhost:8090
 # 8. Watch live messages
 docker exec -it kafka bash
 kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals
+
+# View live messages
+kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals
+
+# View from beginning
+kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals --from-beginning
+
+# View last 10 messages
+kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals --from-beginning --max-messages 10
+
+
+# View patient-vitals
+docker exec -it kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic patient-vitals
+
+# With pretty JSON formatting (if jq installed)
+docker exec -it kafka kafka-console-consumer \
+  --bootstrap-server localhost:9092 \
+  --topic patient-vitals | jq .
+
+# View all 4 topics (open 4 terminals)
+docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals
+docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic lab-results
+docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic medications
+docker exec -it kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic adverse-events
 ```
 
 ---

@@ -8,5 +8,5 @@ docker run --rm \
 ```
 
 ```sh
-docker compose up -d kafka zookeeper kafka-ui minio minio-setup kafka-producer kafka-consumer
+docker compose up -d kafka zookeeper kafka-ui minio minio-setup kafka-producer kafka-consumer spark-master spark-batch spark-streaming spark-worker 
 ```

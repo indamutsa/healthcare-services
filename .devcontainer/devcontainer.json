@@ -13,7 +13,7 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
   "workspaceFolder": "/workspaces/clinical-trials-service",
 
-  "postCreateCommand": "apt-get update && apt-get install -y docker.io docker-compose && /scripts/setup.sh ",
+  "postCreateCommand": "apt-get update && apt-get install -y docker.io && /scripts/setup.sh ",
 
   "remoteUser": "root",
   "forwardPorts": [8080, 3000, 5173],
