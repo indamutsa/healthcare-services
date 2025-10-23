@@ -1,17 +1,10 @@
 """
-Feature engineering modules.
+Feature engineering utility modules.
 """
-
-from .temporal_features import TemporalFeatureGenerator
-from .lab_features import LabFeatureGenerator
-from .medication_features import MedicationFeatureGenerator
-from .patient_context import PatientContextGenerator
-from .derived_features import DerivedFeatureGenerator
+from .spark_session import create_feature_engineering_spark
+from .feature_metadata import FeatureMetadata
 
 __all__ = [
-    "TemporalFeatureGenerator",
-    "LabFeatureGenerator",
-    "MedicationFeatureGenerator",
-    "PatientContextGenerator",
-    "DerivedFeatureGenerator"
+    "create_feature_engineering_spark",
+    "FeatureMetadata"
 ]

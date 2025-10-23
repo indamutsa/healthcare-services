@@ -439,3 +439,51 @@ MIT License - see [LICENSE](LICENSE) file for details.
 │  │    - Evaluate & promote                       │          │
 │  └──────────────────────────────────────────────┘          │
 └─────────────────────────────────────────────────────────────┘
+
+
+📊 What It Does
+The script checks all 6 levels of your pipeline:
+Level 0: Infrastructure
+
+✅ MinIO server accessible
+✅ MinIO bucket exists
+✅ Kafka broker accessible
+✅ Redis server accessible
+✅ MLflow server accessible
+✅ PostgreSQL databases accessible
+
+Level 1: Data Ingestion
+
+✅ Kafka producer running
+✅ Kafka consumer running
+✅ Kafka topics exist
+✅ Bronze data exists
+
+Level 2: Data Processing
+
+✅ Spark master/worker running
+✅ Spark accessible
+✅ Silver data exists
+
+Level 3: Feature Engineering
+
+✅ Feature engineering service running
+✅ Offline features exist (MinIO)
+✅ Online features exist (Redis)
+
+Level 4: ML Pipeline
+
+✅ Model serving API running
+✅ Health endpoint accessible
+
+Level 5: Observability
+
+✅ Prometheus running
+✅ Grafana running
+✅ Services accessible
+
+Data Flow Validation
+
+📊 Counts files in Bronze layer
+📊 Counts files in Silver layer
+📊 Counts files in Feature store
