@@ -40,6 +40,7 @@ while [[ $# -gt 0 ]]; do
       docker compose up -d $SERVICES
       echo -e "${GREEN}✓ Services started${NC}"
       ;;
+      
     -r|--restart)
       echo -e "${YELLOW}Restarting data pipeline services...${NC}"
       docker compose stop $SERVICES
@@ -47,17 +48,79 @@ while [[ $# -gt 0 ]]; do
       docker compose up -d --build --force-recreate $SERVICES
       echo -e "${GREEN}✓ Services restarted${NC}"
       ;;
+
     -x|--shutdown)
       echo -e "${YELLOW}Shutting down data pipeline services...${NC}"
       docker compose down
       echo -e "${GREEN}✓ Services stopped${NC}"
       ;;
+
     -f|--full-clean)
-      echo -e "${RED}⚠ Performing full cleanup (containers, images, volumes, networks)...${NC}"
-      docker compose down -v --remove-orphans || true
-      docker system prune -a --volumes -f || true
-      echo -e "${GREEN}✓ Full cleanup complete${NC}"
+      echo -e "${RED}⚠ Performing full cleanup for data pipeline (containers, images, volumes, networks)...${NC}"
+
+      SERVICES="kafka zookeeper kafka-ui minio minio-setup kafka-producer kafka-consumer spark-master spark-batch spark-streaming spark-worker"
+
+      echo -e "${YELLOW}→ Stopping and removing containers for project services...${NC}"
+      for svc in $SERVICES; do
+        CID=$(docker ps -aqf "name=${svc}")
+        if [ -n "$CID" ]; then
+          echo "   - Removing container: $svc ($CID)"
+          docker rm -f "$CID" >/dev/null 2>&1 || true
+        else
+          echo "   - No running container found for: $svc"
+        fi
+      done
+
+      echo -e "${YELLOW}→ Removing project-specific volumes (attached to services)...${NC}"
+      for svc in $SERVICES; do
+        docker volume ls -q | grep -E "${svc}" | xargs -r docker volume rm -f >/dev/null 2>&1 || true
+      done
+
+      echo -e "${YELLOW}→ Removing project-specific networks...${NC}"
+      docker network ls --format '{{.Name}}' | grep -E "clinical|mlops" | xargs -r docker network rm >/dev/null 2>&1 || true
+
+      echo -e "${YELLOW}→ Detecting and removing images tied to project services...${NC}"
+      IMAGES_TO_REMOVE=()
+
+      for svc in $SERVICES; do
+        IMG_ID=$(docker compose images --quiet $svc 2>/dev/null || true)
+        if [ -z "$IMG_ID" ]; then
+          IMG_ID=$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep -E "$svc" | awk '{print $2}' | head -n 1)
+        fi
+        if [ -n "$IMG_ID" ]; then
+          echo "   - Found image for $svc: $IMG_ID"
+          IMAGES_TO_REMOVE+=("$IMG_ID")
+        fi
+      done
+
+      # Also include known upstream base images
+      echo -e "${YELLOW}→ Including known upstream base images...${NC}"
+      BASE_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | \
+        grep -E "apache/spark|confluentinc/cp-kafka|minio/minio|minio/mc" | \
+        awk '{print $2}')
+      if [ -n "$BASE_IMAGES" ]; then
+        IMAGES_TO_REMOVE+=($BASE_IMAGES)
+      fi
+
+      UNIQUE_IMAGES=$(printf "%s\n" "${IMAGES_TO_REMOVE[@]}" | sort -u)
+      if [ -n "$UNIQUE_IMAGES" ]; then
+        echo ""
+        echo "Removing these images:"
+        echo "$UNIQUE_IMAGES" | sed 's/^/   - /'
+        echo "$UNIQUE_IMAGES" | xargs -r docker rmi -f >/dev/null 2>&1 || true
+      else
+        echo "No images found for project services or base images."
+      fi
+
+      echo -e "${YELLOW}→ Final prune (dangling cache, layers)...${NC}"
+      docker system prune -f >/dev/null 2>&1 || true
+
+      echo -e "${GREEN}✓ Full cleanup complete!${NC}"
+      echo ""
+      echo "You can now rebuild everything fresh:"
+      echo "  docker compose up -d --build"
       ;;
+
     -h|--help)
       usage
       ;;

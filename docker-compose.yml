@@ -14,6 +14,7 @@ volumes:
   spark-logs:
   elasticsearch-data:
   logstash-data:
+  redis-insight-data:
 
 services:
   # ============================================================================
@@ -189,6 +190,22 @@ services:
       timeout: 5s
       retries: 5
 
+  redis-insight:
+      image: redis/redisinsight:latest
+      container_name: redis-insight
+      ports:
+        - "5540:5540"
+      volumes:
+        - redis-insight-data:/data
+      networks:
+        - mlops-network
+      depends_on:
+        - redis
+      healthcheck:
+        test: ["CMD", "wget", "-q", "--spider", "http://localhost:5540/api/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
   # ============================================================================
   # ML PLATFORM
   # ============================================================================
@@ -769,108 +786,3 @@ services:
     profiles:
       - monitoring
 
-
-
-# version: "3.8"
-
-# services:
-#   clinical-mq:
-#     platform: linux/amd64
-#     build:
-#       context: ./infrastructure/docker/ibm-mq
-#       dockerfile: Dockerfile
-#     container_name: clinical-mq
-#     environment:
-#       - LICENSE=accept
-#       - MQ_QMGR_NAME=CLINICAL_QM
-#       - MQ_APP_PASSWORD=${MQ_APP_PASSWORD:-clinical123}   # creates user 'app'
-#       - MQ_ADMIN_PASSWORD=${MQ_ADMIN_PASSWORD:-admin123}  # web console admin
-#       - MQ_ENABLE_EMBEDDED_WEB_SERVER=true
-#     ports:
-#       - "1414:1414"
-#       - "9443:9443"
-#     healthcheck:
-#       test: ["CMD-SHELL", "dspmq -m CLINICAL_QM -o status | grep -q 'STATUS(Running)'"]
-#       interval: 30s
-#       timeout: 10s
-#       retries: 10
-#       start_period: 120s
-#     restart: unless-stopped
-#     networks: [clinical-network]
-
-#   clinical-data-gateway:
-#     build:
-#       context: ./applications/clinical-data-gateway
-#       dockerfile: Dockerfile
-#     container_name: clinical-gateway
-#     environment:
-#       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-development}
-#       - SERVER_PORT=${SERVER_PORT:-8080}
-#       - IBM_MQ_QUEUE_MANAGER=${IBM_MQ_QUEUE_MANAGER:-CLINICAL_QM}
-#       - IBM_MQ_CHANNEL=${IBM_MQ_CHANNEL:-DEV.APP.SVRCONN}
-#       - IBM_MQ_CONNNAME=${IBM_MQ_CONNNAME:-clinical-mq(1414)}
-#       - IBM_MQ_USER=${IBM_MQ_USER:-app}
-#       - IBM_MQ_PASSWORD=${IBM_MQ_PASSWORD:-clinical123}
-#       - IBM_MQ_USERAUTHENTICATIONMQCSP=${IBM_MQ_USERAUTHENTICATIONMQCSP:-true}
-#     depends_on:
-#       clinical-mq:
-#         condition: service_healthy
-#     ports:
-#       - "8080:8080"
-#     healthcheck:
-#       test: ["CMD", "curl", "-fsS", "http://localhost:${SERVER_PORT:-8080}/actuator/health"]
-#       interval: 30s
-#       timeout: 5s
-#       retries: 10
-#       start_period: 60s
-#     restart: unless-stopped
-#     networks: [clinical-network]
-
-#   lab-results-processor:
-#     build:
-#       context: ./applications/lab-results-processor
-#       dockerfile: Dockerfile
-#     container_name: lab-processor
-#     environment:
-#       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-development}
-#       - SERVER_PORT=8081
-#       - IBM_MQ_QUEUE_MANAGER=${IBM_MQ_QUEUE_MANAGER:-CLINICAL_QM}
-#       - IBM_MQ_CHANNEL=${IBM_MQ_CHANNEL:-DEV.APP.SVRCONN}
-#       - IBM_MQ_CONNNAME=clinical-mq(1414)
-#       - IBM_MQ_USER=${IBM_MQ_USER:-app}
-#       - IBM_MQ_PASSWORD=${IBM_MQ_PASSWORD:-clinical123}
-#       - IBM_MQ_USERAUTHENTICATIONMQCSP=${IBM_MQ_USERAUTHENTICATIONMQCSP:-true}
-#     depends_on:
-#       clinical-mq:
-#         condition: service_healthy
-#     ports:
-#       - "8081:8081"
-#     healthcheck:
-#       test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
-#       interval: 30s
-#       timeout: 5s
-#       retries: 10
-#       start_period: 60s
-#     restart: unless-stopped
-#     networks: [clinical-network]
-
-#   clinical-data-generator:
-#     build:
-#       context: .
-#       dockerfile: operations/docker/clinical-data-generator/Dockerfile
-#     container_name: clinical-data-generator
-#     environment:
-#       - GEN_ENDPOINT=http://clinical-gateway:8080
-#       - GEN_MODE=${GEN_MODE:-random}
-#       - GEN_INTERVAL=${GEN_INTERVAL:-1-5}
-#       - GEN_COUNT=${GEN_COUNT:-0}
-#       - GEN_DATA_TYPE=${GEN_DATA_TYPE:-random}
-#       - GEN_START_DELAY=${GEN_START_DELAY:-30}
-#     # Intentionally no hard dependency; container sleeps GEN_START_DELAY before sending
-#     # Use on-failure so finite runs (GEN_COUNT>0) don't loop
-#     restart: on-failure
-#     networks: [clinical-network]
-
-# networks:
-#   clinical-network:
-#     driver: bridge

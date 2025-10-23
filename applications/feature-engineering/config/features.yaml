@@ -1,0 +1,122 @@
+# Feature Engineering Configuration
+
+feature_version: "v1.0"
+point_in_time_correctness: true
+
+# Time windows for temporal aggregations
+temporal_windows:
+  short: 3600      # 1 hour in seconds
+  medium: 21600    # 6 hours
+  long: 86400      # 24 hours
+
+# Missing data handling
+missing_data:
+  vitals_forward_fill_max_seconds: 7200  # 2 hours
+  lab_forward_fill_max_days: 7
+  flag_missingness: true
+
+# Feature groups configuration
+feature_groups:
+  
+  temporal_vitals:
+    enabled: true
+    source: patient_vitals_stream
+    metrics:
+      - heart_rate
+      - bp_systolic
+      - bp_diastolic
+      - temperature
+      - spo2
+    aggregations:
+      - mean
+      - std
+      - min
+      - max
+      - trend
+    windows:
+      - short
+      - medium
+      - long
+    
+  temporal_derived:
+    enabled: true
+    source: patient_vitals_stream
+    metrics:
+      - pulse_pressure
+      - mean_arterial_pressure
+    aggregations:
+      - mean
+      - std
+      - trend
+    windows:
+      - medium
+      - long
+  
+  lab_results:
+    enabled: true
+    source: lab_results
+    tests:
+      - ALT
+      - AST
+      - creatinine
+      - bilirubin
+      - hemoglobin
+      - platelet_count
+      - WBC
+      - glucose
+    features:
+      - latest_value
+      - change_from_baseline
+      - days_since_last_test
+      - abnormal_count_7d
+  
+  medications:
+    enabled: true
+    source: medications
+    features:
+      - current_medication_count
+      - high_risk_drug_flag
+      - drug_interaction_flag
+      - days_on_current_med
+    high_risk_drugs:
+      - Acetaminophen
+      - Methotrexate
+      - Isoniazid
+      - Valproic Acid
+  
+  patient_context:
+    enabled: true
+    features:
+      - days_since_enrollment
+      - trial_arm_encoded
+      - trial_site_encoded
+  
+  derived_features:
+    enabled: true
+    interactions:
+      - name: fever_tachycardia_score
+        formula: "heart_rate_mean_1h * temperature_mean_1h / 100"
+      - name: cardiac_output_proxy
+        formula: "bp_systolic_mean_6h / heart_rate_mean_6h"
+      - name: vital_instability_score
+        formula: "heart_rate_std_24h + bp_systolic_std_24h + temperature_std_24h"
+
+# Output configuration
+output:
+  offline_store:
+    path: "s3a://clinical-mlops/features/offline/"
+    format: parquet
+    partition_by: date
+    compression: snappy
+  
+  online_store:
+    host: redis
+    port: 6379
+    key_pattern: "patient:{patient_id}:features"
+    ttl_hours: 48
+    
+# Label configuration
+label:
+  name: adverse_event_24h
+  source: adverse_events_stream
+  prediction_window_hours: 24
