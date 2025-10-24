@@ -19,6 +19,8 @@ source "${SCRIPT_DIR}/scripts/infrastructure/manage.sh"
 source "${SCRIPT_DIR}/scripts/infrastructure/health-checks.sh"
 source "${SCRIPT_DIR}/scripts/data-ingestion/manage.sh"
 source "${SCRIPT_DIR}/scripts/data-ingestion/health-checks.sh"
+source "${SCRIPT_DIR}/scripts/processing-layer/manage.sh"
+source "${SCRIPT_DIR}/scripts/processing-layer/health-checks.sh"
 
 # --- Command Line Parsing ---
 
@@ -54,6 +56,8 @@ ${GREEN}Level Selection:${NC}
                         3 = Feature Engineering
                         4 = ML Pipeline
                         5 = Observability
+
+${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-2
 
 ${GREEN}Information Commands (Can be combined):${NC}
   -h, --health-check    Run health checks
@@ -148,12 +152,12 @@ parse_arguments() {
                 ;;
             --level)
                 if [ -z "$2" ]; then
-                    log_error "Please specify a level (0-1)"
+                    log_error "Please specify a level (0-2)"
                     exit 1
                 fi
                 TARGET_LEVEL=$2
-                if [ "$TARGET_LEVEL" -lt 0 ] || [ "$TARGET_LEVEL" -gt 1 ]; then
-                    log_error "Invalid level. Must be 0-1 (currently supporting Level 0 and 1 only)"
+                if [ "$TARGET_LEVEL" -lt 0 ] || [ "$TARGET_LEVEL" -gt 2 ]; then
+                    log_error "Invalid level. Must be 0-2 (currently supporting Level 0, 1, and 2)"
                     exit 1
                 fi
                 shift 2
@@ -222,6 +226,9 @@ main() {
                 1)
                     start_data_ingestion false
                     ;;
+                2)
+                    start_data_processing false
+                    ;;
             esac
             ;;
         stop)
@@ -232,6 +239,9 @@ main() {
                 1)
                     stop_data_ingestion true  # Remove containers AND volumes
                     ;;
+                2)
+                    stop_data_processing true  # Remove containers AND volumes
+                    ;;
             esac
             ;;
         restart)
@@ -241,6 +251,9 @@ main() {
                     ;;
                 1)
                     rebuild_data_ingestion
+                    ;;
+                2)
+                    rebuild_data_processing
                     ;;
             esac
             ;;
@@ -256,6 +269,9 @@ main() {
                         ;;
                     1)
                         stop_data_ingestion true
+                        ;;
+                    2)
+                        stop_data_processing true
                         ;;
                 esac
                 docker compose down -v --remove-orphans 2>/dev/null || true
@@ -276,6 +292,9 @@ main() {
             1)
                 show_data_ingestion_status
                 ;;
+            2)
+                show_data_processing_status
+                ;;
         esac
     fi
 
@@ -287,6 +306,9 @@ main() {
                 ;;
             1)
                 run_data_ingestion_health_checks
+                ;;
+            2)
+                run_data_processing_health_checks
                 ;;
         esac
     fi
@@ -306,6 +328,12 @@ main() {
                 echo ""
                 check_kafka_data_flow
                 ;;
+            2)
+                log_info "Data Processing Visualization"
+                quick_data_processing_status
+                echo ""
+                inspect_spark_outputs
+                ;;
         esac
     fi
 
@@ -317,6 +345,9 @@ main() {
                 ;;
             1)
                 show_data_ingestion_urls
+                ;;
+            2)
+                show_data_processing_urls
                 ;;
         esac
     fi

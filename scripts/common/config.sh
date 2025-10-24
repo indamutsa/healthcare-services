@@ -45,12 +45,14 @@ LEVEL_DEPENDENCIES[1]="0"
 
 # Level 2: Data Processing
 LEVEL_SERVICES[2]="spark-master spark-worker spark-streaming spark-batch"
+LEVEL_SERVICE_NAMES[2]="spark-master spark-worker spark-streaming spark-batch"
 LEVEL_PROFILES[2]="data-processing"
 LEVEL_NAMES[2]="Data Processing"
 LEVEL_DEPENDENCIES[2]="0 1"
 
 # Level 3: Feature Engineering
 LEVEL_SERVICES[3]="feature-engineering"
+LEVEL_SERVICE_NAMES[3]="feature-engineering"
 LEVEL_PROFILES[3]="features"
 LEVEL_NAMES[3]="Feature Engineering"
 LEVEL_DEPENDENCIES[3]="0 1 2"
