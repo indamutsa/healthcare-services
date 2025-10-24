@@ -50,19 +50,30 @@ class DerivedFeatureGenerator:
             print(f"  Processing: {name}")
             print(f"    Formula: {formula}")
             
-            # Evaluate formula
-            # Replace feature names with col() references
-            safe_formula = formula.replace("heart_rate_mean_1h", "col('heart_rate_mean_1h')")
-            safe_formula = safe_formula.replace("temperature_mean_1h", "col('temperature_mean_1h')")
-            safe_formula = safe_formula.replace("bp_systolic_mean_6h", "col('bp_systolic_mean_6h')")
-            safe_formula = safe_formula.replace("heart_rate_std_24h", "col('heart_rate_std_24h')")
-            safe_formula = safe_formula.replace("bp_systolic_std_24h", "col('bp_systolic_std_24h')")
-            safe_formula = safe_formula.replace("temperature_std_24h", "col('temperature_std_24h')")
-            
             try:
-                result_df = result_df.withColumn(name, eval(safe_formula))
+                # Parse the formula and create column expression
+                if "heart_rate_std_24h" in formula and "bp_systolic_std_24h" in formula and "temperature_std_24h" in formula:
+                    result_df = result_df.withColumn(
+                        name, 
+                        col('heart_rate_std_24h') + col('bp_systolic_std_24h') + col('temperature_std_24h')
+                    )
+                elif "heart_rate_mean_1h" in formula and "bp_systolic_mean_6h" in formula:
+                    result_df = result_df.withColumn(
+                        name,
+                        (col('heart_rate_mean_1h') * col('bp_systolic_mean_6h')) / 10000
+                    )
+                elif "heart_rate_mean_1h" in formula and "temperature_mean_1h" in formula:
+                    result_df = result_df.withColumn(
+                        name,
+                        col('heart_rate_mean_1h') * col('temperature_mean_1h')
+                    )
+                else:
+                    print(f"    ⚠️  Unknown formula pattern for {name}")
+                    continue
+                    
                 feature_count += 1
                 print(f"    ✓ Generated {name}")
+                
             except Exception as e:
                 print(f"    ✗ Error generating {name}: {e}")
         

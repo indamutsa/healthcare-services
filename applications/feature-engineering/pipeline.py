@@ -70,6 +70,26 @@ class FeatureEngineeringPipeline:
         
         print("="*60 + "\n")
     
+    def check_silver_data_exists(self, date: str) -> bool:
+        """
+        Check if silver data exists for the given date.
+        
+        Args:
+            date: Date string (YYYY-MM-DD)
+            
+        Returns:
+            True if data exists, False otherwise
+        """
+        base_path = f"s3a://{self.s3_bucket}/processed"
+        vitals_path = f"{base_path}/patient_vitals_stream/processing_date={date}/"
+        
+        try:
+            df = self.spark.read.parquet(vitals_path)
+            count = df.count()
+            return count > 0
+        except Exception as e:
+            return False
+    
     def load_silver_data(self, date: str):
         """
         Load cleaned data from Silver layer.
@@ -86,44 +106,53 @@ class FeatureEngineeringPipeline:
         
         base_path = f"s3a://{self.s3_bucket}/processed"
         
-        # Load patient vitals
+        # Load patient vitals (REQUIRED)
         vitals_path = f"{base_path}/patient_vitals_stream/processing_date={date}/"
         print(f"  Loading vitals from: {vitals_path}")
-        vitals_df = self.spark.read.parquet(vitals_path)
-        vitals_count = vitals_df.count()
-        print(f"    ✓ Loaded {vitals_count:,} vital records")
         
-        # Load adverse events
+        try:
+            vitals_df = self.spark.read.parquet(vitals_path)
+            vitals_count = vitals_df.count()
+            
+            if vitals_count == 0:
+                raise ValueError(f"No vitals data found for date {date}")
+            
+            print(f"    ✓ Loaded {vitals_count:,} vital records")
+        except Exception as e:
+            print(f"    ✗ ERROR: {e}")
+            raise ValueError(f"Failed to load vitals data: {e}")
+        
+        # Load adverse events (OPTIONAL)
         adverse_path = f"{base_path}/adverse_events_stream/processing_date={date}/"
         print(f"  Loading adverse events from: {adverse_path}")
         try:
             adverse_df = self.spark.read.parquet(adverse_path)
             adverse_count = adverse_df.count()
             print(f"    ✓ Loaded {adverse_count:,} adverse event records")
-        except:
-            print(f"    ⚠️  No adverse events found")
+        except Exception as e:
+            print(f"    ⚠️  No adverse events found (optional)")
             adverse_df = None
         
-        # Load lab results
+        # Load lab results (OPTIONAL)
         labs_path = f"{base_path}/lab_results/date={date}/"
         print(f"  Loading labs from: {labs_path}")
         try:
             labs_df = self.spark.read.parquet(labs_path)
             labs_count = labs_df.count()
             print(f"    ✓ Loaded {labs_count:,} lab records")
-        except:
-            print(f"    ⚠️  No lab results found")
+        except Exception as e:
+            print(f"    ⚠️  No lab results found (optional)")
             labs_df = None
         
-        # Load medications
+        # Load medications (OPTIONAL)
         meds_path = f"{base_path}/medications/date={date}/"
         print(f"  Loading medications from: {meds_path}")
         try:
             meds_df = self.spark.read.parquet(meds_path)
             meds_count = meds_df.count()
             print(f"    ✓ Loaded {meds_count:,} medication records")
-        except:
-            print(f"    ⚠️  No medications found")
+        except Exception as e:
+            print(f"    ⚠️  No medications found (optional)")
             meds_df = None
         
         return vitals_df, adverse_df, labs_df, meds_df
@@ -153,10 +182,14 @@ class FeatureEngineeringPipeline:
         # 2. Lab features
         if labs_df is not None:
             features_df = self.lab_gen.generate_features(features_df, labs_df)
+        else:
+            print("\n⚠️  Skipping lab features (no data)")
         
         # 3. Medication features
         if meds_df is not None:
             features_df = self.med_gen.generate_features(features_df, meds_df)
+        else:
+            print("\n⚠️  Skipping medication features (no data)")
         
         # 4. Patient context features
         features_df = self.context_gen.generate_features(features_df)
@@ -183,7 +216,7 @@ class FeatureEngineeringPipeline:
             DataFrame with labels
         """
         if adverse_df is None:
-            print("\n⚠️  No adverse events data - skipping label creation")
+            print("\n⚠️  No adverse events data - all labels set to 0")
             return features_df.withColumn("adverse_event_24h", lit(0))
         
         print(f"\n{'='*60}")
@@ -271,6 +304,7 @@ class FeatureEngineeringPipeline:
         
         # Save metadata
         metadata_path = "/app/data/feature_metadata.json"
+        os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
         self.metadata.save(metadata_path)
     
     def run(self, date: str):
@@ -285,6 +319,22 @@ class FeatureEngineeringPipeline:
         print(f"\n{'#'*60}")
         print(f"# Running Pipeline for: {date}")
         print(f"{'#'*60}\n")
+        
+        # Check if data exists
+        print("Checking if silver data exists...")
+        if not self.check_silver_data_exists(date):
+            print(f"\n✗ ERROR: No silver data found for {date}")
+            print("\nPossible solutions:")
+            print("1. Run Spark streaming processor first:")
+            print("   docker-compose logs spark-streaming")
+            print("2. Run batch processor:")
+            print("   docker-compose run --rm spark-batch")
+            print("3. Wait for data to be processed (streaming runs continuously)")
+            print("4. Check MinIO for data:")
+            print("   http://localhost:9001")
+            sys.exit(1)
+        
+        print(f"✓ Silver data exists for {date}\n")
         
         try:
             # 1. Load silver data
@@ -314,14 +364,19 @@ class FeatureEngineeringPipeline:
             print(f"Date: {date}")
             print(f"Duration: {duration:.2f} seconds")
             print(f"Status: SUCCESS ✓")
+            print(f"Metadata: /app/data/feature_metadata.json")
             print(f"{'='*60}\n")
             
         except Exception as e:
+            duration = (datetime.utcnow() - start_time).total_seconds()
             print(f"\n{'='*60}")
             print("PIPELINE FAILED")
             print(f"{'='*60}")
             print(f"Error: {e}")
+            print(f"Duration: {duration:.2f} seconds")
             print(f"{'='*60}\n")
+            import traceback
+            traceback.print_exc()
             raise
         
         finally:
@@ -330,12 +385,13 @@ class FeatureEngineeringPipeline:
 
 def main():
     """Main entry point."""
-    # Get date from environment or use yesterday
+    # Get date from environment or use today
     date_str = os.getenv("PROCESS_DATE")
     
     if not date_str:
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        date_str = yesterday.strftime("%Y-%m-%d")
+        # Use today
+        today = datetime.utcnow()
+        date_str = today.strftime("%Y-%m-%d")
     
     print(f"\nProcessing date: {date_str}\n")
     

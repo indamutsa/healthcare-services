@@ -1,0 +1,154 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║          Clinical MLOps - Level-Based Management                  ║
+║                     QUICK REFERENCE CARD                           ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────┐
+│ LEVELS OVERVIEW                                                   │
+├───────────────────────────────────────────────────────────────────┤
+│  0: Infrastructure (MinIO, Postgres, Redis, Kafka)               │
+│  1: Data Ingestion (Producers, Consumers)                         │
+│  2: Data Processing (Spark)                                       │
+│  3: Feature Engineering                                           │
+│  4: ML Pipeline (MLflow, Training, Serving) ← MLflow here!       │
+│  5: Observability (Airflow, Prometheus, Grafana)                 │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ START COMMANDS                                                    │
+├───────────────────────────────────────────────────────────────────┤
+│  --start-level 0          Infrastructure only                     │
+│  --start-level 1          Infra + Data Ingestion                  │
+│  --start-level 2          Infra + Ingestion + Processing          │
+│  --start-level 3          Levels 0-3 (up to Features)             │
+│  --start-level 4          Levels 0-4 (includes MLflow!)           │
+│  --start-level 5          Infra + Observability                   │
+│  --start-full             All levels                              │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STOP COMMANDS                                                     │
+├───────────────────────────────────────────────────────────────────┤
+│  --stop-level <N>         Stop level N (keep volumes)             │
+│  --stop-level-full <N>    Stop level N (remove volumes)           │
+│  --stop-full              Stop all (keep volumes)                 │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ OTHER COMMANDS                                                    │
+├───────────────────────────────────────────────────────────────────┤
+│  --status                 Show what's running                     │
+│  --logs <N>               Follow logs for level N                 │
+│  --restart-level <N>      Restart level N                         │
+│  --clean-all              REMOVE EVERYTHING (nuclear!)            │
+│  --help                   Show full help                          │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ ACCESS POINTS                                                     │
+├───────────────────────────────────────────────────────────────────┤
+│  MinIO Console        http://localhost:9001                       │
+│  Kafka UI             http://localhost:8090                       │
+│  MLflow UI            http://localhost:5000  (Level 4)            │
+│  Redis UI             http://localhost:5540                       │
+│  Spark Master         http://localhost:8080  (Level 2)            │
+│  Model API            http://localhost:8000  (Level 4)            │
+│  Airflow              http://localhost:8081  (Level 5)            │
+│  Prometheus           http://localhost:9090  (Level 5)            │
+│  Grafana              http://localhost:3000  (Level 5)            │
+│  OpenSearch           http://localhost:5601  (Level 5)            │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ COMMON WORKFLOWS                                                  │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Quick Test:                                                      │
+│    ./manage_pipeline.sh --start-level 0                           │
+│    ./manage_pipeline.sh --status                                  │
+│                                                                   │
+│  Full Pipeline:                                                   │
+│    ./manage_pipeline.sh --start-full                              │
+│                                                                   │
+│  Train Model:                                                     │
+│    ./manage_pipeline.sh --start-level 4                           │
+│    # Access MLflow at http://localhost:5000                       │
+│                                                                   │
+│  Debug Specific Level:                                            │
+│    ./manage_pipeline.sh --logs 2                                  │
+│                                                                   │
+│  Clean Start:                                                     │
+│    ./manage_pipeline.sh --clean-all                               │
+│    ./manage_pipeline.sh --start-level 0                           │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ IMPORTANT NOTES                                                   │
+├───────────────────────────────────────────────────────────────────┤
+│  ⚠️  MLflow is now in Level 4, not Level 0!                       │
+│  ⚠️  --stop-level keeps data, --stop-level-full removes it        │
+│  ⚠️  --clean-all is NUCLEAR - removes everything including images │
+│  ✅  Dependencies auto-start when needed                          │
+│  ✅  Each level can be managed independently                      │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                                   │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Service won't start:                                             │
+│    1. Check status: ./manage_pipeline.sh --status                 │
+│    2. Check logs: ./manage_pipeline.sh --logs <level>             │
+│    3. Restart: ./manage_pipeline.sh --restart-level <level>       │
+│                                                                   │
+│  MLflow not running at Level 0:                                   │
+│    ✅ This is correct! MLflow is now in Level 4                   │
+│    Run: ./manage_pipeline.sh --start-level 4                      │
+│                                                                   │
+│  Out of disk space:                                               │
+│    ./manage_pipeline.sh --clean-all                               │
+│                                                                   │
+│  Need complete reset:                                             │
+│    ./manage_pipeline.sh --clean-all                               │
+│    ./manage_pipeline.sh --start-level 0                           │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────────────────────────────┐
+│ FILES PROVIDED                                                    │
+├───────────────────────────────────────────────────────────────────┤
+│  manage_pipeline.sh                  Main management script       │
+│  LEVEL_BASED_MANAGEMENT_GUIDE.md     Comprehensive guide          │
+│  ARCHITECTURE_DIAGRAM.txt            Visual architecture          │
+│  docker-compose-level4-section.yml   MLflow config example        │
+│  setup.sh                            Quick setup helper           │
+│  QUICK_REFERENCE.txt                 This file                    │
+└───────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════
+                        COPY-PASTE EXAMPLES
+═══════════════════════════════════════════════════════════════════
+
+# Make script executable
+chmod +x manage_pipeline.sh
+
+# Start infrastructure
+./manage_pipeline.sh --start-level 0
+
+# Check what's running
+./manage_pipeline.sh --status
+
+# Start everything for ML work
+./manage_pipeline.sh --start-level 4
+
+# View training logs
+./manage_pipeline.sh --logs 4
+
+# Stop and clean everything
+./manage_pipeline.sh --clean-all
+
+# Get help
+./manage_pipeline.sh --help
+
+═══════════════════════════════════════════════════════════════════

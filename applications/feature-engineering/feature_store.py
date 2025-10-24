@@ -89,7 +89,8 @@ class FeatureStore:
         except Exception as e:
             print(f"  ✗ Error writing to offline store: {e}")
             raise
-    
+        
+        
     def update_online(self, df: DataFrame):
         """
         Update online store (Redis) with latest features per patient.
@@ -102,13 +103,30 @@ class FeatureStore:
         print(f"{'='*60}")
         
         # Get feature columns (exclude metadata)
-        exclude_cols = ['patient_id', 'timestamp', 'processing_date', 'processed_at']
+        exclude_cols = ['patient_id', 'timestamp', 'processing_date', 'processed_at', 
+                    'feature_version', 'adverse_event_24h']
         feature_cols = [c for c in df.columns if c not in exclude_cols]
         
         print(f"  Feature columns: {len(feature_cols)}")
         
+        # Fill null values before collecting to avoid NoneType errors
+        from pyspark.sql.functions import when, isnan, isnull
+        
+        df_clean = df
+        for col_name in feature_cols:
+            # Fill nulls with appropriate defaults based on column type
+            if any(x in col_name for x in ['flag', 'encoded', 'count', 'interaction']):
+                # For flags, counts, encoded values - fill with 0
+                df_clean = df_clean.fillna({col_name: 0})
+            elif any(x in col_name for x in ['mean', 'std', 'min', 'max', 'trend', 'score']):
+                # For numeric features - fill with 0
+                df_clean = df_clean.fillna({col_name: 0})
+            else:
+                # For other features - fill with 0 as default
+                df_clean = df_clean.fillna({col_name: 0})
+        
         # Convert to list of dictionaries
-        rows = df.select(
+        rows = df_clean.select(
             "patient_id",
             "timestamp",
             *feature_cols
@@ -128,35 +146,56 @@ class FeatureStore:
                 'updated_at': timestamp.isoformat() if timestamp else datetime.utcnow().isoformat()
             }
             
-            # Add all feature values
+            # Add all feature values with proper type conversion
             for col_name in feature_cols:
                 value = row[col_name]
-                # Convert to JSON-serializable format
-                if value is not None:
-                    features[col_name] = float(value) if isinstance(value, (int, float)) else str(value)
+                
+                # Convert to Redis-compatible types
+                if value is None:
+                    features[col_name] = 0  # Default for nulls
+                elif isinstance(value, (int, float)):
+                    # Handle NaN and infinite values
+                    if isinstance(value, float) and (value != value):  # Check for NaN
+                        features[col_name] = 0
+                    else:
+                        features[col_name] = float(value)
+                elif isinstance(value, bool):
+                    features[col_name] = 1 if value else 0
                 else:
-                    features[col_name] = None
+                    features[col_name] = str(value)
             
             # Build Redis key
             redis_key = self.key_pattern.format(patient_id=patient_id)
             
             try:
-                # Store as hash
-                self.redis_client.hset(redis_key, mapping=features)
+                # Store as hash - ensure all values are Redis-compatible
+                redis_mapping = {}
+                for key, value in features.items():
+                    # Final validation - ensure no None values
+                    if value is None:
+                        redis_mapping[key] = 0
+                    else:
+                        redis_mapping[key] = value
+                
+                self.redis_client.hset(redis_key, mapping=redis_mapping)
                 
                 # Set TTL
                 self.redis_client.expire(redis_key, self.ttl_seconds)
                 
                 updated_count += 1
                 
+                # Print progress for large datasets
+                if updated_count % 1000 == 0:
+                    print(f"    ... updated {updated_count:,} patients")
+                    
             except Exception as e:
                 print(f"    ✗ Error updating {patient_id}: {e}")
                 error_count += 1
         
         print(f"\n  ✓ Updated {updated_count:,} patients in Redis")
         if error_count > 0:
-            print(f"  ⚠️  Errors: {error_count}")
-    
+            print(f"  ⚠️  Errors: {error_count}")  
+
     def read_offline(self, date_range: List[str]) -> DataFrame:
         """
         Read features from offline store for given date range.

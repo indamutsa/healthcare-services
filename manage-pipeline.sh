@@ -173,6 +173,85 @@ start_level() {
     echo -e "${GREEN}  ✓ Level $level started${NC}"
 }
 
+start_level_rebuild() {
+    # FRESH START: Stop cascade, rebuild images, force recreate
+    local level=$1
+    
+    print_header "🔄 Fresh Start: Rebuild & Force Recreate Level $level"
+    
+    echo -e "${YELLOW}This will:${NC}"
+    echo "  1. Stop levels $level → 0 (cascade)"
+    echo "  2. Rebuild all images"
+    echo "  3. Force recreate all containers"
+    echo ""
+ 
+    # Step 1: Cascade stop (without removing volumes)
+    if [ "$level" -gt 0 ]; then
+        echo -e "${CYAN}Step 1: Stopping existing services (cascade)...${NC}"
+        for current_level in $(seq $level -1 0); do
+            print_level_header $current_level "Stopping"
+            stop_level_only $current_level false
+            echo -e "${GREEN}  ✓ Level $current_level stopped${NC}"
+        done
+        echo ""
+    fi
+
+    docker compose down -v
+
+    # Step 2: Build all images for the level and dependencies
+    echo -e "${CYAN}Step 2: Building images...${NC}"
+    echo ""
+    
+    for build_level in $(seq 0 $level); do
+        local services="${LEVEL_SERVICES[$build_level]}"
+        local profile="${LEVEL_PROFILES[$build_level]}"
+        
+        echo -e "${MAGENTA}  Building Level $build_level: ${LEVEL_NAMES[$build_level]}${NC}"
+        
+        # Build with docker compose
+        if [ -n "$profile" ]; then
+            docker compose --profile "$profile" build $services 2>&1 | grep -E "Building|Successfully|FINISHED" || true
+        else
+            docker compose build $services 2>&1 | grep -E "Building|Successfully|FINISHED" || true
+        fi
+    done
+    
+    echo ""
+    echo -e "${GREEN}  ✓ All images built${NC}"
+    echo ""
+    
+    # Step 3: Start with force recreate (from 0 to level)
+    echo -e "${CYAN}Step 3: Starting services with force recreate...${NC}"
+    echo ""
+    
+    for start_level_num in $(seq 0 $level); do
+        print_level_header $start_level_num "Force Recreating"
+        
+        local services="${LEVEL_SERVICES[$start_level_num]}"
+        local profile="${LEVEL_PROFILES[$start_level_num]}"
+        
+        echo "  Force recreating services:"
+        for service in $services; do
+            echo -e "    • $service ${BLUE}[RECREATING]${NC}"
+        done
+        
+        echo ""
+        
+        # Execute docker compose with build and force recreate
+        if [ -n "$profile" ]; then
+            docker compose --profile "$profile" up -d --build --force-recreate $services
+        else
+            docker compose up -d --build --force-recreate $services
+        fi
+        
+        echo ""
+        echo -e "${GREEN}  ✓ Level $start_level_num recreated${NC}"
+    done
+    
+    echo ""
+    echo -e "${GREEN}✓ Fresh start complete! All services rebuilt and recreated.${NC}"
+}
+
 stop_level_only() {
     # Stop only this specific level without cascade
     local level=$1
@@ -435,6 +514,332 @@ show_status() {
     echo ""
 }
 
+check_level_4() {
+    print_level_header 4
+    
+    # MLflow Server
+    check "MLflow server running" \
+        "check_service_running mlflow-server"
+    
+    if check_service_running mlflow-server; then
+        check "MLflow server accessible" \
+            "curl -sf http://localhost:5000/health"
+        
+        check "MLflow tracking API" \
+            "curl -sf http://localhost:5000/api/2.0/mlflow/experiments/list" \
+            true
+        
+        # Check MLflow artifacts bucket
+        check_minio_bucket "mlflow-artifacts" "MLflow artifacts bucket exists"
+        
+        # Check experiment count
+        EXPERIMENT_COUNT=$(curl -sf http://localhost:5000/api/2.0/mlflow/experiments/list 2>/dev/null | grep -o '"experiment_id"' | wc -l || echo "0")
+        if [ "$EXPERIMENT_COUNT" -gt 0 ]; then
+            echo -e "    ${GREEN}✓${NC} MLflow experiments: $EXPERIMENT_COUNT"
+        else
+            echo -e "    ${YELLOW}⚠${NC} No experiments yet (run training first)"
+        fi
+    fi
+    
+    # ML Training Prerequisites
+    echo ""
+    echo "  ML Training Prerequisites:"
+    
+    # Check offline features exist
+    OFFLINE_FEATURES=$(docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive 2>/dev/null | wc -l || echo "0")
+    if [ "$OFFLINE_FEATURES" -gt 0 ]; then
+        echo -e "    ${GREEN}✓${NC} Offline features: $OFFLINE_FEATURES files"
+    else
+        echo -e "    ${RED}✗${NC} No offline features (run Level 3 first)"
+    fi
+    
+    # Check online features exist
+    ONLINE_PATIENTS=$(docker exec redis redis-cli KEYS "patient:*:features" 2>/dev/null | wc -l || echo "0")
+    if [ "$ONLINE_PATIENTS" -gt 0 ]; then
+        echo -e "    ${GREEN}✓${NC} Online features: $ONLINE_PATIENTS patients"
+    else
+        echo -e "    ${YELLOW}⚠${NC} No online features (optional)"
+    fi
+    
+    # Check ML training code exists
+    if [ -f "./applications/ml-training/train.py" ]; then
+        echo -e "    ${GREEN}✓${NC} ML training code exists"
+    else
+        echo -e "    ${RED}✗${NC} ML training code missing"
+    fi
+    
+    if [ -f "./applications/ml-training/configs/model_config.yaml" ]; then
+        echo -e "    ${GREEN}✓${NC} Training config exists"
+    else
+        echo -e "    ${YELLOW}⚠${NC} Training config missing"
+    fi
+    
+    # ML Training readiness summary
+    echo ""
+    if [ "$OFFLINE_FEATURES" -gt 0 ] && check_service_running mlflow-server && [ -f "./applications/ml-training/train.py" ]; then
+        echo -e "  ${GREEN}✓ Ready for ML training${NC}"
+        echo -e "    Run: ${CYAN}./manage-pipeline.sh train${NC}"
+    else
+        echo -e "  ${YELLOW}⚠ Not ready for training${NC}"
+        echo "    Prerequisites needed:"
+        [ "$OFFLINE_FEATURES" -eq 0 ] && echo "      - Run feature engineering (Level 3)"
+        ! check_service_running mlflow-server && echo "      - Start MLflow server"
+        [ ! -f "./applications/ml-training/train.py" ] && echo "      - Add ML training code"
+    fi
+    
+    echo ""
+    
+    # Model Serving (optional)
+    check "Model serving running" \
+        "check_service_running model-serving" \
+        true
+    
+    if check_service_running model-serving; then
+        check "Model serving health" \
+            "curl -sf http://localhost:8000/health"
+        
+        check "Model serving API docs" \
+            "curl -sf http://localhost:8000/docs" \
+            true
+    fi
+    
+    # ML Training service (run profile)
+    check "ML training service available" \
+        "test -f ./applications/ml-training/train.py"
+}
+
+check_ml_training_readiness() {
+    print_header "ML Training Readiness Check"
+    
+    echo "  Validating full ML training pipeline..."
+    echo ""
+    
+    local ALL_READY=true
+    local MISSING_DEPS=()
+    
+    # Level 0: Infrastructure
+    if ! check_service_running minio; then
+        echo -e "  ${RED}✗${NC} MinIO not running (Level 0)"
+        MISSING_DEPS+=("Start Level 0: ./manage-pipeline.sh start 0")
+        ALL_READY=false
+    else
+        echo -e "  ${GREEN}✓${NC} MinIO running"
+    fi
+    
+    if ! check_service_running redis; then
+        echo -e "  ${RED}✗${NC} Redis not running (Level 0)"
+        MISSING_DEPS+=("Start Level 0: ./manage-pipeline.sh start 0")
+        ALL_READY=false
+    else
+        echo -e "  ${GREEN}✓${NC} Redis running"
+    fi
+    
+    # Level 3: Features
+    OFFLINE_FEATURES=$(docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive 2>/dev/null | wc -l || echo "0")
+    if [ "$OFFLINE_FEATURES" -eq 0 ]; then
+        echo -e "  ${RED}✗${NC} No offline features (Level 3)"
+        MISSING_DEPS+=("Run feature engineering: ./manage-pipeline.sh start 3")
+        ALL_READY=false
+    else
+        echo -e "  ${GREEN}✓${NC} Offline features: $OFFLINE_FEATURES files"
+    fi
+    
+    # Level 4: MLflow
+    if ! check_service_running mlflow-server; then
+        echo -e "  ${RED}✗${NC} MLflow server not running (Level 4)"
+        MISSING_DEPS+=("Start Level 4: ./manage-pipeline.sh start 4")
+        ALL_READY=false
+    else
+        if curl -sf http://localhost:5000/health > /dev/null 2>&1; then
+            echo -e "  ${GREEN}✓${NC} MLflow server running and healthy"
+        else
+            echo -e "  ${YELLOW}⚠${NC} MLflow server running but not accessible"
+            MISSING_DEPS+=("Check MLflow logs: docker compose logs mlflow-server")
+            ALL_READY=false
+        fi
+    fi
+    
+    # Training code
+    if [ ! -f "./applications/ml-training/train.py" ]; then
+        echo -e "  ${RED}✗${NC} Training code missing"
+        MISSING_DEPS+=("Add ML training code to ./applications/ml-training/")
+        ALL_READY=false
+    else
+        echo -e "  ${GREEN}✓${NC} Training code exists"
+    fi
+    
+    if [ ! -f "./applications/ml-training/configs/model_config.yaml" ]; then
+        echo -e "  ${YELLOW}⚠${NC} Training config missing"
+        MISSING_DEPS+=("Add config: ./applications/ml-training/configs/model_config.yaml")
+    else
+        echo -e "  ${GREEN}✓${NC} Training config exists"
+    fi
+    
+    echo ""
+    echo "═══════════════════════════════════════════════════════════"
+    
+    if [ "$ALL_READY" = true ]; then
+        echo -e "${GREEN}✓ ALL SYSTEMS GO - Ready for training!${NC}"
+        echo ""
+        echo "Next steps:"
+        echo "  • Quick test:  ${CYAN}./manage-pipeline.sh test-train${NC}"
+        echo "  • Full train:  ${CYAN}./manage-pipeline.sh train${NC}"
+        echo "  • Visualize:   ${CYAN}./manage-pipeline.sh visualize${NC}"
+        return 0
+    else
+        echo -e "${RED}✗ Prerequisites not met${NC}"
+        echo ""
+        echo "Required actions:"
+        for dep in "${MISSING_DEPS[@]}"; do
+            echo "  • $dep"
+        done
+        return 1
+    fi
+}
+
+# Add after the level functions (around line 450)
+
+run_ml_training() {
+    print_header "🎯 Running ML Training Pipeline"
+    
+    # Check if Level 4 is running
+    if ! check_service_running mlflow-server; then
+        echo -e "${RED}✗ MLflow server not running${NC}"
+        echo "Start Level 4 first: ./manage-pipeline.sh start 4"
+        exit 1
+    fi
+    
+    # Check prerequisites
+    echo "Checking prerequisites..."
+    OFFLINE_FEATURES=$(docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive 2>/dev/null | wc -l || echo "0")
+    
+    if [ "$OFFLINE_FEATURES" -eq 0 ]; then
+        echo -e "${RED}✗ No features in offline store${NC}"
+        echo "Run feature engineering first: ./manage-pipeline.sh start 3"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✓ Prerequisites met${NC}"
+    echo ""
+    
+    # Run training
+    echo "Starting training pipeline..."
+    echo ""
+    
+    docker compose --profile ml-pipeline run --rm ml-training python train.py
+    
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ Training completed successfully${NC}"
+        echo ""
+        echo "View results:"
+        echo "  MLflow UI: ${CYAN}http://localhost:5000${NC}"
+        echo ""
+        echo "Visualize training:"
+        echo "  ${CYAN}./scripts/visualize-training.sh${NC}"
+    else
+        echo ""
+        echo -e "${RED}✗ Training failed${NC}"
+        echo ""
+        echo "Check logs:"
+        echo "  ${CYAN}docker compose logs ml-training${NC}"
+        exit 1
+    fi
+}
+
+# Update the help function to include new commands (around line 700)
+show_usage() {
+    cat << EOF
+Usage: $0 <command> [options]
+
+LEVEL MANAGEMENT:
+  start <N>              Start level N and its dependencies (0-$MAX_LEVEL)
+  stop <N>               CASCADE STOP: Stop level N and all lower levels (N → 0)
+  restart <N>            Restart specific level only
+  status [N]             Show status of level N (or all if N not specified)
+  logs <N> [service]     Show logs for level N services
+
+FULL STACK:
+  start-all              Start all levels (0-$MAX_LEVEL)
+  stop-all               Stop all levels
+  restart-all            Restart all levels
+  
+ADVANCED:
+  rebuild <N>            Rebuild and restart level N
+  fresh-start <N>        Stop, rebuild, and start level N (FULL CLEAN START)
+  clean                  Remove all containers, volumes, networks (DESTRUCTIVE)
+
+ML TRAINING:
+  train                  Run full ML training pipeline
+  test-train             Quick test training (single model)
+  visualize              Visualize training results
+
+UTILITIES:
+  health [N]             Run health checks for level N (or all)
+  clean-logs             Clean up old log files
+  help                   Show this help message
+
+LEVELS:
+EOF
+    for level in $(seq 0 $MAX_LEVEL); do
+        echo "  $level: ${LEVEL_NAMES[$level]}"
+    done
+    echo ""
+}
+
+# Update main case statement (around line 730)
+case "$1" in
+    # ... existing cases ...
+    
+    train)
+        run_ml_training
+        ;;
+    
+    test-train)
+        test_ml_training
+        ;;
+    
+    visualize)
+        ./scripts/visualize-training.sh
+        ;;
+    
+    # ... rest of cases ...
+esac
+
+test_ml_training() {
+    print_header "🧪 Testing ML Training Pipeline"
+    
+    echo "Running quick test with Logistic Regression only..."
+    echo ""
+    
+    # Check prerequisites
+    if ! check_service_running mlflow-server; then
+        echo -e "${RED}✗ MLflow server not running${NC}"
+        echo "Start Level 4 first: ./manage-pipeline.sh start 4"
+        exit 1
+    fi
+    
+    # Run test configuration
+    docker compose --profile ml-pipeline run --rm \
+        -e CONFIG_PATH=configs/test_config.yaml \
+        ml-training python train.py
+    
+    local exit_code=$?
+    
+    if [ $exit_code -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}✓ Test completed successfully${NC}"
+        echo ""
+        echo "Check results: ${CYAN}http://localhost:5000${NC}"
+    else
+        echo ""
+        echo -e "${RED}✗ Test failed${NC}"
+        exit 1
+    fi
+}
+
 show_logs() {
     local level=$1
     
@@ -462,100 +867,101 @@ show_logs() {
 }
 
 usage() {
-    cat << EOF
-${CYAN}Clinical MLOps Pipeline Manager${NC}
+    printf "${CYAN}Clinical MLOps Pipeline Manager${NC}\n\n"
+    
+    printf "${GREEN}Usage:${NC}\n"
+    printf "  $0 [option]\n\n"
+    
+    printf "${GREEN}Options:${NC}\n"
+    printf "  -s, --start-level <N>         Start level N and its dependencies\n"
+    printf "  -S, --start-level-rebuild <N> Fresh start: stop cascade, rebuild, force recreate\n"
+    printf "  -x, --stop-level <N>          Stop level N + cascade (N→0, keeps volumes)\n"
+    printf "  -X, --stop-level-full <N>     Stop level N + cascade (N→0, removes volumes)\n"
+    printf "  -r, --restart-level <N>       Restart level N only\n"
+    printf "  -l, --logs <N>                Follow logs for level N\n\n"
+    printf "  --start-full                  Start all levels (0-5)\n"
+    printf "  --stop-full                   Stop all levels (removes containers, keeps volumes)\n\n"
+    printf "  --status                      Show status of all levels\n\n"
+    printf "  --clean-all                   Full cleanup (removes EVERYTHING including images)\n\n"
+    printf "  -h, --help                    Show this help message\n\n"
 
-${GREEN}Usage:${NC}
-  $0 [option]
+    printf "${GREEN}Examples:${NC}\n"
+    printf "  # Start infrastructure only\n"
+    printf "  $0 --start-level 0\n\n"
+    printf "  # Fresh start data ingestion (rebuild everything)\n"
+    printf "  $0 --start-level-rebuild 1\n\n"
+    printf "  # Start data ingestion (auto-starts level 0)\n"
+    printf "  $0 --start-level 1\n\n"
+    printf "  # Start ML Pipeline (auto-starts levels 0, 1, 2, 3)\n"
+    printf "  $0 --start-level 4\n\n"
+    printf "  # Fresh start ML Pipeline (rebuild all images from 0-4)\n"
+    printf "  $0 --start-level-rebuild 4\n\n"
+    printf "  # Stop data processing + cascade (stops 2, 1, 0)\n"
+    printf "  $0 --stop-level 2\n\n"
+    printf "  # Stop feature engineering + cascade with volumes (stops 3, 2, 1, 0)\n"
+    printf "  $0 --stop-level-full 3\n\n"
+    printf "  # Start everything\n"
+    printf "  $0 --start-full\n\n"
+    printf "  # Show status\n"
+    printf "  $0 --status\n\n"
+    printf "  # View logs for data processing\n"
+    printf "  $0 --logs 2\n\n"
+    printf "  # Full cleanup (removes everything)\n"
+    printf "  $0 --clean-all\n\n"
 
-${GREEN}Options:${NC}
-  -s, --start-level <N>      Start level N and its dependencies
-  -x, --stop-level <N>       Stop level N + cascade (N→0, keeps volumes)
-  -X, --stop-level-full <N>  Stop level N + cascade (N→0, removes volumes)
-  -r, --restart-level <N>    Restart level N only
-  -l, --logs <N>             Follow logs for level N
-  
-  --start-full               Start all levels (0-5)
-  --stop-full                Stop all levels (removes containers, keeps volumes)
-  
-  --status                   Show status of all levels
-  
-  --clean-all                Full cleanup (removes EVERYTHING including images)
-  
-  -h, --help                 Show this help message
+    printf "${GREEN}Level Architecture:${NC}\n"
+    printf "${CYAN}Level 0: Infrastructure${NC}\n"
+    printf "  • minio, postgres (mlflow/airflow), redis, kafka, zookeeper\n"
+    printf "  • ${YELLOW}Note: MLflow server moved to Level 4${NC}\n\n"
+    
+    printf "${CYAN}Level 1: Data Ingestion${NC}\n"
+    printf "  • kafka-producer, kafka-consumer, clinical-mq, data-gateway\n"
+    printf "  • Depends on: Level 0\n\n"
+    
+    printf "${CYAN}Level 2: Data Processing${NC}\n"
+    printf "  • spark-master, spark-worker, spark-streaming, spark-batch\n"
+    printf "  • Depends on: Levels 0, 1\n\n"
+    
+    printf "${CYAN}Level 3: Feature Engineering${NC}\n"
+    printf "  • feature-engineering\n"
+    printf "  • Depends on: Levels 0, 1, 2\n\n"
+    
+    printf "${CYAN}Level 4: ML Pipeline${NC}\n"
+    printf "  • ${YELLOW}mlflow-server${NC}, ml-training, model-serving\n"
+    printf "  • Depends on: Levels 0, 1, 2, 3\n\n"
+    
+    printf "${CYAN}Level 5: Observability${NC}\n"
+    printf "  • airflow, prometheus, grafana, opensearch\n"
+    printf "  • Depends on: Levels 0, 1, 2, 3, 4\n\n"
 
-${GREEN}Examples:${NC}
-  # Start infrastructure only
-  $0 --start-level 0
-  
-  # Start data ingestion (auto-starts level 0)
-  $0 --start-level 1
-  
-  # Start ML Pipeline (auto-starts levels 0, 1, 2, 3)
-  $0 --start-level 4
-  
-  # Stop data processing + cascade (stops 2, 1, 0)
-  $0 --stop-level 2
-  
-  # Stop feature engineering + cascade with volumes (stops 3, 2, 1, 0)
-  $0 --stop-level-full 3
-  
-  # Start everything
-  $0 --start-full
-  
-  # Show status
-  $0 --status
-  
-  # View logs for data processing
-  $0 --logs 2
-  
-  # Full cleanup (removes everything)
-  $0 --clean-all
+    printf "${YELLOW}Important Notes:${NC}\n"
+    printf "  • ${GREEN}CASCADE STOP:${NC} --stop-level N stops N, N-1, ..., 0\n"
+    printf "    Example: --stop-level 3 stops levels 3, 2, 1, 0\n\n"
+    printf "  • ${GREEN}REBUILD:${NC} --start-level-rebuild N does:\n"
+    printf "    1. Stop levels N → 0 (cascade)\n"
+    printf "    2. Rebuild all images (0 → N)\n"
+    printf "    3. Force recreate containers (0 → N)\n\n"
+    printf "  • --stop-level removes containers but keeps volumes (for data persistence)\n"
+    printf "  • --stop-level-full removes containers AND volumes (clean slate)\n"
+    printf "  • --clean-all removes EVERYTHING including images (nuclear option)\n"
+    printf "  • Starting a level automatically starts its dependencies\n"
+    printf "  • ${YELLOW}MLflow server is now in Level 4 (ML Pipeline), not Level 0${NC}\n\n"
 
-${GREEN}Level Architecture:${NC}
-  ${CYAN}Level 0: Infrastructure${NC}
-    • minio, postgres (mlflow/airflow), redis, kafka, zookeeper
-    • ${YELLOW}Note: MLflow server moved to Level 4${NC}
-  
-  ${CYAN}Level 1: Data Ingestion${NC}
-    • kafka-producer, kafka-consumer, clinical-mq, data-gateway
-    • Depends on: Level 0
-  
-  ${CYAN}Level 2: Data Processing${NC}
-    • spark-master, spark-worker, spark-streaming, spark-batch
-    • Depends on: Levels 0, 1
-  
-  ${CYAN}Level 3: Feature Engineering${NC}
-    • feature-engineering
-    • Depends on: Levels 0, 1, 2
-  
-  ${CYAN}Level 4: ML Pipeline${NC}
-    • ${YELLOW}mlflow-server${NC}, ml-training, model-serving
-    • Depends on: Levels 0, 1, 2, 3
-  
-  ${CYAN}Level 5: Observability${NC}
-    • airflow, prometheus, grafana, opensearch
-    • Depends on: Levels 0, 1, 2, 3, 4
+    printf "${CYAN}Cascade Stop Behavior:${NC}\n"
+    printf "  --stop-level 5  →  Stops 5, 4, 3, 2, 1, 0\n"
+    printf "  --stop-level 4  →  Stops 4, 3, 2, 1, 0\n"
+    printf "  --stop-level 3  →  Stops 3, 2, 1, 0\n"
+    printf "  --stop-level 2  →  Stops 2, 1, 0\n"
+    printf "  --stop-level 1  →  Stops 1, 0\n"
+    printf "  --stop-level 0  →  Stops 0 only\n\n"
 
-${YELLOW}Important Notes:${NC}
-  • ${GREEN}CASCADE STOP:${NC} --stop-level N stops N, N-1, ..., 0
-    Example: --stop-level 3 stops levels 3, 2, 1, 0
-  
-  • --stop-level removes containers but keeps volumes (for data persistence)
-  • --stop-level-full removes containers AND volumes (clean slate)
-  • --clean-all removes EVERYTHING including images (nuclear option)
-  • Starting a level automatically starts its dependencies
-  • ${YELLOW}MLflow server is now in Level 4 (ML Pipeline), not Level 0${NC}
-
-${CYAN}Cascade Stop Behavior:${NC}
-  --stop-level 5  →  Stops 5, 4, 3, 2, 1, 0
-  --stop-level 4  →  Stops 4, 3, 2, 1, 0
-  --stop-level 3  →  Stops 3, 2, 1, 0
-  --stop-level 2  →  Stops 2, 1, 0
-  --stop-level 1  →  Stops 1, 0
-  --stop-level 0  →  Stops 0 only
-
-EOF
+    printf "${CYAN}Rebuild Behavior:${NC}\n"
+    printf "  --start-level-rebuild 2  →  Stop (2→0), Rebuild (0→2), Start (0→2)\n\n"
+    printf "${YELLOW}Use rebuild when:${NC}\n"
+    printf "  • Code changes in applications\n"
+    printf "  • Dockerfile modifications\n"
+    printf "  • Need fresh containers\n"
+    printf "  • Debugging issues\n"
 }
 
 # --- Main Script ---
@@ -580,6 +986,22 @@ case "$1" in
         fi
         
         start_level $level
+        ;;
+        
+    -S|--start-level-rebuild)
+        if [ -z "$2" ]; then
+            echo -e "${RED}Error: Please specify a level (0-$MAX_LEVEL)${NC}"
+            exit 1
+        fi
+        
+        level=$2
+        
+        if [ "$level" -lt 0 ] || [ "$level" -gt $MAX_LEVEL ]; then
+            echo -e "${RED}Error: Invalid level. Must be 0-$MAX_LEVEL${NC}"
+            exit 1
+        fi
+        
+        start_level_rebuild $level
         ;;
         
     -x|--stop-level)

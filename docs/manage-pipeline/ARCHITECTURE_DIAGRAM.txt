@@ -1,0 +1,215 @@
+# Level-Based Architecture - Visual Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Clinical MLOps Pipeline                           │
+│                   Level-Based Architecture                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 0: Infrastructure (Always Available - No Profile)             │
+├─────────────────────────────────────────────────────────────────────┤
+│  • MinIO (S3 storage)                                                │
+│  • PostgreSQL (mlflow DB, airflow DB)                               │
+│  • Redis (feature cache)                                             │
+│  • Kafka + Zookeeper (messaging)                                     │
+│  • Kafka UI, Redis Insight                                           │
+│                                                                       │
+│  ❌ NO LONGER INCLUDES: mlflow-server                                │
+└─────────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 1: Data Ingestion (Profile: data-ingestion)                   │
+├─────────────────────────────────────────────────────────────────────┤
+│  • Kafka Producer (generates clinical data)                          │
+│  • Kafka Consumer (saves to Bronze layer)                           │
+│  • Clinical MQ, Data Gateway                                         │
+│  • Lab Results Processor                                             │
+│                                                                       │
+│  Depends on: Level 0                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 2: Data Processing (Profile: data-processing)                 │
+├─────────────────────────────────────────────────────────────────────┤
+│  • Spark Master + Workers                                            │
+│  • Spark Streaming (real-time)                                       │
+│  • Spark Batch (scheduled)                                           │
+│  • Creates Silver layer (cleaned data)                               │
+│                                                                       │
+│  Depends on: Levels 0, 1                                             │
+└─────────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 3: Feature Engineering (Profile: features)                    │
+├─────────────────────────────────────────────────────────────────────┤
+│  • Feature Engineering Service                                       │
+│  • Generates 120+ features                                           │
+│  • Writes to:                                                        │
+│    - Offline Store (MinIO/Parquet)                                   │
+│    - Online Store (Redis)                                            │
+│                                                                       │
+│  Depends on: Levels 0, 1, 2                                          │
+└─────────────────────────────────────────────────────────────────────┘
+                                ↓
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 4: ML Pipeline (Profile: ml-pipeline)                         │
+├─────────────────────────────────────────────────────────────────────┤
+│  ✨ MLflow Server (experiment tracking) ← MOVED HERE!                │
+│  • ML Training (trains models)                                       │
+│  • Model Serving (inference API)                                     │
+│                                                                       │
+│  Depends on: Levels 0, 3                                             │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Level 5: Observability (Profile: observability)                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  • Airflow (orchestration)                                           │
+│  • Prometheus (metrics)                                              │
+│  • Grafana (dashboards)                                              │
+│  • OpenSearch + Dashboards (logs)                                    │
+│  • Data Prepper, Filebeat                                            │
+│                                                                       │
+│  Depends on: Level 0                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════
+                          MANAGEMENT COMMANDS
+═══════════════════════════════════════════════════════════════════════
+
+START COMMANDS:
+  ./manage_pipeline.sh --start-level 0    → Start infrastructure only
+  ./manage_pipeline.sh --start-level 1    → Start levels 0 + 1
+  ./manage_pipeline.sh --start-level 2    → Start levels 0 + 1 + 2
+  ./manage_pipeline.sh --start-level 3    → Start levels 0 + 1 + 2 + 3
+  ./manage_pipeline.sh --start-level 4    → Start levels 0 + 1 + 2 + 3 + 4 (with MLflow!)
+  ./manage_pipeline.sh --start-level 5    → Start levels 0 + 5
+  ./manage_pipeline.sh --start-full       → Start all levels
+
+STOP COMMANDS:
+  ./manage_pipeline.sh --stop-level 2      → Stop level 2 (keeps volumes)
+  ./manage_pipeline.sh --stop-level-full 3 → Stop level 3 (removes volumes)
+  ./manage_pipeline.sh --stop-full         → Stop all (keeps volumes)
+
+CLEAN COMMAND:
+  ./manage_pipeline.sh --clean-all         → REMOVE EVERYTHING (nuclear!)
+
+OTHER COMMANDS:
+  ./manage_pipeline.sh --status            → Show what's running
+  ./manage_pipeline.sh --logs 2            → Follow logs for level 2
+  ./manage_pipeline.sh --restart-level 3   → Restart level 3
+
+
+═══════════════════════════════════════════════════════════════════════
+                          KEY DIFFERENCES
+═══════════════════════════════════════════════════════════════════════
+
+BEFORE (OLD):
+  Level 0: Infrastructure + MLflow Server ❌
+  ./manage_pipeline.sh --start-level 0
+  → MLflow starts immediately
+
+AFTER (NEW):
+  Level 0: Infrastructure only (no MLflow) ✅
+  Level 4: ML Pipeline + MLflow Server ✅
+  
+  ./manage_pipeline.sh --start-level 0
+  → MLflow does NOT start
+  
+  ./manage_pipeline.sh --start-level 4
+  → MLflow starts with ML training and serving
+
+
+═══════════════════════════════════════════════════════════════════════
+                        EXAMPLE WORKFLOW
+═══════════════════════════════════════════════════════════════════════
+
+1. Start infrastructure:
+   $ ./manage_pipeline.sh --start-level 0
+   
+2. Check status (MLflow should NOT be running):
+   $ ./manage_pipeline.sh --status
+   Level 0: Infrastructure
+     ✓ minio
+     ✓ postgres-mlflow
+     ✓ redis
+     ✓ kafka
+     ✗ mlflow-server  ← NOT RUNNING
+
+3. Start data ingestion:
+   $ ./manage_pipeline.sh --start-level 1
+   
+4. Start data processing:
+   $ ./manage_pipeline.sh --start-level 2
+   
+5. Start feature engineering:
+   $ ./manage_pipeline.sh --start-level 3
+   
+6. Start ML pipeline (now MLflow starts):
+   $ ./manage_pipeline.sh --start-level 4
+   
+7. Check status (MLflow should be running now):
+   $ ./manage_pipeline.sh --status
+   Level 4: ML Pipeline
+     ✓ mlflow-server  ← NOW RUNNING
+     ✓ ml-training
+     ✓ model-serving
+
+8. Access MLflow UI:
+   → http://localhost:5000
+
+9. When done testing, clean everything:
+   $ ./manage_pipeline.sh --clean-all
+   (Type 'yes' to confirm)
+
+
+═══════════════════════════════════════════════════════════════════════
+                     VOLUME PERSISTENCE BEHAVIOR
+═══════════════════════════════════════════════════════════════════════
+
+STOP (keeps data):
+  $ ./manage_pipeline.sh --stop-level 2
+  → Removes containers
+  → KEEPS volumes
+  → Data persists
+  → Fast restart
+
+STOP FULL (removes data):
+  $ ./manage_pipeline.sh --stop-level-full 2
+  → Removes containers
+  → REMOVES volumes
+  → Data is LOST
+  → Clean slate
+
+CLEAN ALL (nuclear):
+  $ ./manage_pipeline.sh --clean-all
+  → Removes containers
+  → Removes volumes
+  → Removes networks
+  → Removes IMAGES
+  → Complete reset
+
+
+═══════════════════════════════════════════════════════════════════════
+                          TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════
+
+Problem: MLflow still starts at Level 0
+Solution: Check docker-compose.yml - mlflow-server must have:
+          profiles:
+            - ml-pipeline
+
+Problem: Services won't start
+Solution: Check dependencies are running
+          $ ./manage_pipeline.sh --status
+
+Problem: Need to reset everything
+Solution: $ ./manage_pipeline.sh --clean-all
+          $ ./manage_pipeline.sh --start-level 0
+
+Problem: Disk space issues
+Solution: $ ./manage_pipeline.sh --clean-all
+          (Removes all images and volumes)
+```

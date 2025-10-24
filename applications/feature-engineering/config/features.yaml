@@ -1,30 +1,22 @@
-# Feature Engineering Configuration
-
-feature_version: "v1.0"
-point_in_time_correctness: true
-
-# Time windows for temporal aggregations
 temporal_windows:
-  short: 3600      # 1 hour in seconds
-  medium: 21600    # 6 hours
-  long: 86400      # 24 hours
+  short: 3600
+  medium: 21600
+  long: 86400
 
-# Missing data handling
-missing_data:
-  vitals_forward_fill_max_seconds: 7200  # 2 hours
-  lab_forward_fill_max_days: 7
-  flag_missingness: true
+feature_version: "1.0.0"
 
-# Feature groups configuration
+label:
+  prediction_window_hours: 24
+  positive_class_name: "adverse_event"
+
 feature_groups:
   
   temporal_vitals:
     enabled: true
-    source: patient_vitals_stream
     metrics:
       - heart_rate
-      - bp_systolic
-      - bp_diastolic
+      - blood_pressure_systolic
+      - blood_pressure_diastolic
       - temperature
       - spo2
     aggregations:
@@ -37,10 +29,9 @@ feature_groups:
       - short
       - medium
       - long
-    
+  
   temporal_derived:
     enabled: true
-    source: patient_vitals_stream
     metrics:
       - pulse_pressure
       - mean_arterial_pressure
@@ -49,74 +40,79 @@ feature_groups:
       - std
       - trend
     windows:
+      - short
       - medium
       - long
   
   lab_results:
     enabled: true
-    source: lab_results
     tests:
-      - ALT
-      - AST
-      - creatinine
-      - bilirubin
+      - wbc
       - hemoglobin
-      - platelet_count
-      - WBC
-      - glucose
-    features:
-      - latest_value
+      - platelet
+      - creatinine
+      - alt
+      - ast
+    time_windows:
+      - 24
+      - 72
+    aggregations:
+      - latest
+      - mean
+      - trend
       - change_from_baseline
-      - days_since_last_test
-      - abnormal_count_7d
-  
+    
   medications:
     enabled: true
-    source: medications
-    features:
-      - current_medication_count
-      - high_risk_drug_flag
-      - drug_interaction_flag
-      - days_on_current_med
     high_risk_drugs:
-      - Acetaminophen
-      - Methotrexate
-      - Isoniazid
-      - Valproic Acid
+      - warfarin
+      - insulin
+      - opioids
+      - chemotherapy
+    features:
+      - current_medications
+      - high_risk_medication_flag
+      - polypharmacy_count
+      - days_on_medication
   
   patient_context:
     enabled: true
     features:
+      - trial_site
+      - trial_arm
       - days_since_enrollment
-      - trial_arm_encoded
-      - trial_site_encoded
+      - time_of_day
+      - day_of_week
   
   derived_features:
     enabled: true
     interactions:
-      - name: fever_tachycardia_score
-        formula: "heart_rate_mean_1h * temperature_mean_1h / 100"
-      - name: cardiac_output_proxy
-        formula: "bp_systolic_mean_6h / heart_rate_mean_6h"
-      - name: vital_instability_score
-        formula: "heart_rate_std_24h + bp_systolic_std_24h + temperature_std_24h"
+      - name: "vital_instability_score"
+        formula: "col('heart_rate_std_24h') + col('bp_systolic_std_24h') + col('temperature_std_24h')"
+      - name: "hemodynamic_stress"
+        formula: "col('heart_rate_mean_1h') * col('bp_systolic_mean_6h') / 10000"
+      - name: "fever_tachycardia_interaction"
+        formula: "col('heart_rate_mean_1h') * col('temperature_mean_1h')"
 
-# Output configuration
 output:
   offline_store:
     path: "s3a://clinical-mlops/features/offline/"
-    format: parquet
-    partition_by: date
-    compression: snappy
+    format: "parquet"
+    partition_by: "date"
+    compression: "snappy"
   
   online_store:
-    host: redis
+    host: "redis"
     port: 6379
     key_pattern: "patient:{patient_id}:features"
-    ttl_hours: 48
-    
-# Label configuration
-label:
-  name: adverse_event_24h
-  source: adverse_events_stream
-  prediction_window_hours: 24
+    ttl_hours: 72
+
+quality_checks:
+  enabled: true
+  null_threshold: 0.5
+  variance_threshold: 0.01
+  
+spark:
+  shuffle_partitions: 200
+  cache_intermediate: true
+  repartition_count: 10

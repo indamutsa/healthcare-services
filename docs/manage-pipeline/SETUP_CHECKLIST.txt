@@ -1,0 +1,314 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║            Setup Verification Checklist                           ║
+║     Follow these steps to ensure everything is configured         ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 1: Update docker-compose.yml                                │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 1.1 Find mlflow-server service in docker-compose.yml
+        (Should be around line 187-217 in the Infrastructure section)
+
+[ ] 1.2 Add profile to mlflow-server:
+        After the healthcheck section, add:
+        
+        profiles:
+          - ml-pipeline
+
+[ ] 1.3 Verify ml-training has profiles:
+        
+        profiles:
+          - training
+          - ml-pipeline
+
+[ ] 1.4 Verify model-serving has profiles:
+        
+        profiles:
+          - serving
+          - ml-pipeline
+
+[ ] 1.5 Validate docker-compose.yml:
+        
+        docker compose config > /dev/null
+        
+        ✅ No errors = good to go
+        ❌ Has errors = fix syntax before continuing
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 2: Set up management script                                 │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 2.1 Copy manage_pipeline.sh to project root
+
+[ ] 2.2 Make it executable:
+        
+        chmod +x manage_pipeline.sh
+
+[ ] 2.3 Test the script runs:
+        
+        ./manage_pipeline.sh --help
+        
+        ✅ Shows help message = working
+        ❌ Error = check permissions
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 3: Test Level 0 (Infrastructure)                            │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 3.1 Start Level 0:
+        
+        ./manage_pipeline.sh --start-level 0
+
+[ ] 3.2 Wait for services to start (30-60 seconds)
+
+[ ] 3.3 Check status:
+        
+        ./manage_pipeline.sh --status
+
+[ ] 3.4 Verify these services are RUNNING:
+        [ ] minio
+        [ ] minio-setup
+        [ ] postgres-mlflow
+        [ ] postgres-airflow
+        [ ] redis
+        [ ] redis-insight
+        [ ] zookeeper
+        [ ] kafka
+        [ ] kafka-ui
+
+[ ] 3.5 CRITICAL: Verify mlflow-server is NOT running:
+        
+        docker ps | grep mlflow
+        
+        ✅ No output = correct (MLflow not at Level 0)
+        ❌ Shows mlflow = need to add profile in docker-compose.yml
+
+[ ] 3.6 Test access to services:
+        [ ] MinIO Console: http://localhost:9001 (minioadmin/minioadmin)
+        [ ] Kafka UI: http://localhost:8090
+        [ ] Redis Insight: http://localhost:5540
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 4: Test Level 4 (ML Pipeline with MLflow)                   │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 4.1 Start Level 4 (will also start levels 1, 2, 3):
+        
+        ./manage_pipeline.sh --start-level 4
+
+[ ] 4.2 Wait for all dependencies to start (2-3 minutes)
+
+[ ] 4.3 Check status:
+        
+        ./manage_pipeline.sh --status
+
+[ ] 4.4 Verify mlflow-server is NOW running:
+        
+        docker ps | grep mlflow
+        
+        ✅ Shows mlflow-server = correct!
+        ❌ Not running = check logs
+
+[ ] 4.5 Access MLflow UI:
+        
+        http://localhost:5000
+        
+        ✅ Shows MLflow interface = working!
+        ❌ Connection refused = check logs
+
+[ ] 4.6 Check MLflow logs if needed:
+        
+        ./manage_pipeline.sh --logs 4
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 5: Test Stop Operations                                     │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 5.1 Stop Level 4 (keeps volumes):
+        
+        ./manage_pipeline.sh --stop-level 4
+
+[ ] 5.2 Verify Level 4 services are stopped:
+        
+        docker ps | grep -E "mlflow|ml-training|model-serving"
+        
+        ✅ No output = services stopped correctly
+
+[ ] 5.3 Verify Level 0 is still running:
+        
+        docker ps | grep -E "minio|kafka|redis"
+        
+        ✅ Shows services = Level 0 still up
+
+[ ] 5.4 Restart Level 4:
+        
+        ./manage_pipeline.sh --start-level 4
+
+[ ] 5.5 Verify it starts quickly (volumes preserved)
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 6: Test Clean Operations                                    │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 6.1 Stop all levels:
+        
+        ./manage_pipeline.sh --stop-full
+
+[ ] 6.2 Verify all containers are stopped:
+        
+        docker ps
+        
+        ✅ No pipeline containers = stopped correctly
+
+[ ] 6.3 Check volumes still exist:
+        
+        docker volume ls | grep -E "minio|kafka|redis"
+        
+        ✅ Shows volumes = data preserved
+
+[ ] 6.4 Test full clean (⚠️ WARNING: removes everything):
+        
+        ./manage_pipeline.sh --clean-all
+        
+        (Type 'yes' when prompted)
+
+[ ] 6.5 Verify everything is gone:
+        
+        docker volume ls | grep -E "clinical|mlops"
+        
+        ✅ No output = everything cleaned
+
+[ ] 6.6 Verify images are removed:
+        
+        docker images | grep -E "clinical|minio|kafka"
+        
+        ✅ Minimal output = images cleaned
+
+┌───────────────────────────────────────────────────────────────────┐
+│ STEP 7: Final Validation                                         │
+└───────────────────────────────────────────────────────────────────┘
+
+[ ] 7.1 Start fresh from Level 0:
+        
+        ./manage_pipeline.sh --start-level 0
+
+[ ] 7.2 Confirm MLflow is NOT at Level 0:
+        
+        ./manage_pipeline.sh --status
+        
+        Level 4: ML Pipeline
+          ✗ mlflow-server  ← Should show ✗ (not running)
+
+[ ] 7.3 Start Level 4:
+        
+        ./manage_pipeline.sh --start-level 4
+
+[ ] 7.4 Confirm MLflow IS at Level 4:
+        
+        ./manage_pipeline.sh --status
+        
+        Level 4: ML Pipeline
+          ✓ mlflow-server  ← Should show ✓ (running)
+
+[ ] 7.5 Access MLflow UI at http://localhost:5000
+
+[ ] 7.6 All checks passed! 🎉
+
+┌───────────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                                   │
+└───────────────────────────────────────────────────────────────────┘
+
+Problem: MLflow still starts at Level 0
+├─ Solution: Check docker-compose.yml has:
+│  
+│  mlflow-server:
+│    # ... configuration ...
+│    profiles:
+│      - ml-pipeline  ← Must have this!
+│
+└─ Then restart: ./manage_pipeline.sh --clean-all
+                 ./manage_pipeline.sh --start-level 0
+
+Problem: Services won't start
+├─ Check logs: ./manage_pipeline.sh --logs <level>
+├─ Check dependencies: ./manage_pipeline.sh --status
+└─ Restart: ./manage_pipeline.sh --restart-level <level>
+
+Problem: Can't access UIs
+├─ Check service is running: docker ps | grep <service>
+├─ Check ports: netstat -an | grep <port>
+└─ Check logs: docker logs <service>
+
+Problem: Out of disk space
+└─ Clean everything: ./manage_pipeline.sh --clean-all
+
+Problem: Script not executable
+└─ Fix permissions: chmod +x manage_pipeline.sh
+
+┌───────────────────────────────────────────────────────────────────┐
+│ COMMON COMMANDS REFERENCE                                         │
+└───────────────────────────────────────────────────────────────────┘
+
+# Show what's running
+./manage_pipeline.sh --status
+
+# Start infrastructure
+./manage_pipeline.sh --start-level 0
+
+# Start ML pipeline (includes MLflow)
+./manage_pipeline.sh --start-level 4
+
+# View logs
+./manage_pipeline.sh --logs 4
+
+# Stop everything
+./manage_pipeline.sh --stop-full
+
+# Nuclear clean
+./manage_pipeline.sh --clean-all
+
+# Get help
+./manage_pipeline.sh --help
+
+┌───────────────────────────────────────────────────────────────────┐
+│ SUCCESS CRITERIA                                                  │
+└───────────────────────────────────────────────────────────────────┘
+
+✅ All checkboxes above are checked
+✅ MLflow does NOT start at Level 0
+✅ MLflow DOES start at Level 4
+✅ Can access all UIs
+✅ Stop/start operations work correctly
+✅ Clean operation removes everything
+
+If all criteria met: You're ready to use the level-based system! 🚀
+
+┌───────────────────────────────────────────────────────────────────┐
+│ NEXT STEPS                                                        │
+└───────────────────────────────────────────────────────────────────┘
+
+Now that setup is complete, you can:
+
+1. Build your data pipeline:
+   - Start Level 0 for infrastructure
+   - Add Level 1 for data ingestion
+   - Add Level 2 for data processing
+   - Add Level 3 for feature engineering
+
+2. Train models:
+   - Start Level 4 to get MLflow + training
+   - Access MLflow at http://localhost:5000
+
+3. Monitor everything:
+   - Start Level 5 for observability
+   - Access Grafana at http://localhost:3000
+
+4. Refer to documentation:
+   - LEVEL_BASED_MANAGEMENT_GUIDE.md (comprehensive)
+   - QUICK_REFERENCE.txt (quick commands)
+   - ARCHITECTURE_DIAGRAM.txt (visual overview)
+
+═══════════════════════════════════════════════════════════════════
+                    Happy MLOps! 🚀
+═══════════════════════════════════════════════════════════════════

@@ -1,0 +1,161 @@
+# Multi-Model Training Configuration
+
+# Experiment settings
+experiment:
+  name: "clinical_adverse_events"
+  description: "Multi-model training for adverse event prediction"
+  tags:
+    project: "clinical-mlops"
+    task: "binary_classification"
+
+# MLflow settings
+mlflow:
+  tracking_uri: "http://mlflow-server:5000"
+  artifact_location: "s3://clinical-mlops/mlflow-artifacts/"
+  autolog: true
+
+# Data configuration
+data:
+  # Feature store path
+  offline_store_path: "s3a://clinical-mlops/features/offline/"
+  
+  # Date range for training
+  start_date: "2025-09-01"
+  end_date: "2025-10-24"
+  
+  # Target variable
+  target_column: "adverse_event_24h"
+  
+  # Columns to exclude from features
+  exclude_columns:
+    - "patient_id"
+    - "timestamp"
+    - "updated_at"
+    - "adverse_event_24h"
+    - "date"
+  
+  # Train/Val/Test split (temporal)
+  split_ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+
+# S3/MinIO configuration
+s3:
+  endpoint: "http://minio:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+
+# Preprocessing configuration
+preprocessing:
+  # Handle missing values
+  missing_strategy: "mean"  # mean, median, drop
+  
+  # Scaling strategy
+  scaler: "standard"  # standard, minmax, robust
+  
+  # Feature selection
+  feature_selection:
+    enabled: false
+    method: "mutual_info"  # mutual_info, f_classif
+    n_features: 100
+
+# Model configurations
+models:
+  # Logistic Regression (Baseline)
+  logistic_regression:
+    enabled: true
+    params:
+      penalty: "l2"
+      C: 1.0
+      solver: "lbfgs"
+      max_iter: 1000
+      class_weight: "balanced"
+      random_state: 42
+  
+  # Random Forest
+  random_forest:
+    enabled: true
+    params:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 10
+      min_samples_leaf: 5
+      max_features: "sqrt"
+      class_weight: "balanced"
+      n_jobs: -1
+      random_state: 42
+  
+  # XGBoost (Primary Model)
+  xgboost:
+    enabled: true
+    params:
+      objective: "binary:logistic"
+      eval_metric: "auc"
+      max_depth: 6
+      learning_rate: 0.1
+      n_estimators: 200
+      min_child_weight: 1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      gamma: 0
+      reg_alpha: 0
+      reg_lambda: 1
+      scale_pos_weight: 1
+      seed: 42
+    early_stopping:
+      enabled: true
+      rounds: 15
+      verbose: 10
+  
+  # Neural Network
+  neural_network:
+    enabled: true
+    architecture:
+      input_dim: null  # Will be set automatically
+      hidden_layers: [256, 128, 64]
+      dropout_rate: 0.3
+      activation: "relu"
+      output_activation: "sigmoid"
+    training:
+      batch_size: 256
+      epochs: 100
+      learning_rate: 0.001
+      weight_decay: 0.0001
+      early_stopping:
+        patience: 10
+        min_delta: 0.001
+    device: "cpu"  # cpu or cuda
+
+# Ensemble configuration
+ensemble:
+  enabled: true
+  method: "voting"  # voting or stacking
+  voting_type: "soft"  # hard or soft
+  weights: null  # null for equal weights, or [w1, w2, w3, w4]
+
+# Evaluation thresholds
+evaluation:
+  # Minimum performance requirements
+  min_auc: 0.70
+  min_precision_at_80_recall: 0.30
+  
+  # Target recall for threshold optimization
+  target_recall: 0.80
+  
+  # Classification threshold
+  default_threshold: 0.5
+
+# Training settings
+training:
+  # Random seed for reproducibility
+  random_state: 42
+  
+  # Cross-validation
+  cross_validation:
+    enabled: false
+    n_folds: 5
+  
+  # Save best model
+  save_best_model: true
+  model_registry_name: "adverse_event_predictor"

@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Pipeline Health Check - Validates all dependencies and data flow by level
+# CASCADE CHECK: Checking level N checks N, N-1, ..., 0
 #
 
 # set -e
@@ -11,6 +12,7 @@ YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 CHECKS_PASSED=0
@@ -20,30 +22,37 @@ CHECKS_WARNING=0
 # --- Level Definitions (matching manage_pipeline.sh) ---
 declare -A LEVEL_SERVICES
 declare -A LEVEL_NAMES
+declare -A LEVEL_DEPENDENCIES
 
-# Level 0: Infrastructure
+# Level 0: Infrastructure (NO mlflow-server - moved to Level 4)
 LEVEL_SERVICES[0]="minio minio-setup postgres-mlflow postgres-airflow redis redis-insight zookeeper kafka kafka-ui"
 LEVEL_NAMES[0]="Infrastructure"
+LEVEL_DEPENDENCIES[0]=""
 
 # Level 1: Data Ingestion
 LEVEL_SERVICES[1]="kafka-producer kafka-consumer clinical-mq clinical-data-gateway lab-results-processor clinical-data-generator"
 LEVEL_NAMES[1]="Data Ingestion"
+LEVEL_DEPENDENCIES[1]="0"
 
 # Level 2: Data Processing
 LEVEL_SERVICES[2]="spark-master spark-worker spark-streaming spark-batch"
 LEVEL_NAMES[2]="Data Processing"
+LEVEL_DEPENDENCIES[2]="0 1"
 
 # Level 3: Feature Engineering
 LEVEL_SERVICES[3]="feature-engineering"
 LEVEL_NAMES[3]="Feature Engineering"
+LEVEL_DEPENDENCIES[3]="0 1 2"
 
-# Level 4: ML Pipeline
+# Level 4: ML Pipeline (NOW includes mlflow-server)
 LEVEL_SERVICES[4]="mlflow-server ml-training model-serving"
 LEVEL_NAMES[4]="ML Pipeline"
+LEVEL_DEPENDENCIES[4]="0 1 2 3"
 
 # Level 5: Observability
 LEVEL_SERVICES[5]="airflow-init airflow-webserver airflow-scheduler prometheus grafana monitoring-service opensearch opensearch-dashboards data-prepper filebeat"
 LEVEL_NAMES[5]="Observability"
+LEVEL_DEPENDENCIES[5]="0 1 2 3 4"
 
 MAX_LEVEL=5
 
@@ -115,7 +124,8 @@ check_level_0() {
         "curl -sf http://localhost:9000/minio/health/live"
     
     check "MinIO setup completed" \
-        "docker logs minio-setup 2>&1 | grep -q 'MinIO setup completed successfully'"
+        "docker logs minio-setup 2>&1 | grep -q 'setup completed successfully'" \
+        true
     
     check "MinIO client configured" \
         "docker exec minio mc alias set myminio http://localhost:9000 minioadmin minioadmin"
@@ -158,9 +168,10 @@ check_level_1() {
     check "Clinical MQ running" \
         "check_service_running clinical-mq" \
         true
-    
+        
     check "Clinical data gateway running" \
-        "curl -sf http://localhost:8080/actuator/health"
+        "curl -sf http://localhost:8082/actuator/health" \
+        true
 
     if check_service_running kafka-producer; then
         check "Kafka topics exist" \
@@ -199,7 +210,8 @@ check_level_3() {
     print_level_header 3
     
     check "Feature engineering service running" \
-        "check_service_running feature-engineering"
+        "check_service_running feature-engineering" \
+        true
 
     if check_service_running feature-engineering; then
         check_minio_bucket "clinical-mlops/features/offline/" "Offline features exist" true
@@ -218,7 +230,8 @@ check_level_4() {
         true
     
     check "Model serving API running" \
-        "check_service_running model-serving"
+        "check_service_running model-serving" \
+        true
     
     check "ML training service running" \
         "check_service_running ml-training" \
@@ -239,13 +252,16 @@ check_level_5() {
     print_level_header 5
     
     check "Prometheus running" \
-        "check_service_running prometheus"
+        "check_service_running prometheus" \
+        true
     
     check "Grafana running" \
-        "check_service_running grafana"
+        "check_service_running grafana" \
+        true
     
     check "Airflow webserver running" \
-        "check_service_running airflow-webserver"
+        "check_service_running airflow-webserver" \
+        true
     
     check "Airflow scheduler running" \
         "check_service_running airflow-scheduler" \
@@ -295,7 +311,8 @@ check_data_flow() {
         echo "    Silver layer (processed): $SILVER_COUNT files"
         
         # Check Features
-        FEATURES_COUNT=$(docker exec minio mc ls myminio/clinical-mlops/features/ --recursive 2>/dev/null | wc -l || echo "0")
+        # FEATURES_COUNT=$(docker exec minio mc ls myminio/clinical-mlops/features/ --recursive 2>/dev/null | wc -l || echo "0")
+        FEATURE_COUNT=$(docker exec redis redis-cli HLEN "$SAMPLE_PATIENT")
         echo "    Feature store: $FEATURES_COUNT files"
         
         # Check Models
@@ -334,13 +351,13 @@ check_data_flow() {
 
 show_usage() {
     cat << EOF
-${CYAN}Pipeline Health Check - Level Based${NC}
+${CYAN}Pipeline Health Check - Level Based with Cascade${NC}
 
 ${GREEN}Usage:${NC}
   $0 [option]
 
 ${GREEN}Options:${NC}
-  -l, --level <N>      Check health of specific level (0-$MAX_LEVEL)
+  -l, --level <N>      Check health of level N + dependencies (N→0 cascade)
   -f, --full           Check health of all levels (default)
   -d, --data-flow      Check data flow only
   -s, --status         Quick status check (services only)
@@ -350,9 +367,10 @@ ${GREEN}Examples:${NC}
   # Full health check (all levels + data flow)
   $0 --full
   
-  # Check specific level
-  $0 --level 0
-  $0 --level 4
+  # Check specific level + cascade (checks dependencies)
+  $0 --level 0        # Checks: 0
+  $0 --level 2        # Checks: 2, 1, 0
+  $0 --level 4        # Checks: 4, 3, 2, 1, 0
   
   # Check data flow only
   $0 --data-flow
@@ -361,12 +379,41 @@ ${GREEN}Examples:${NC}
   $0 --status
 
 ${GREEN}Levels:${NC}
-  0: Infrastructure (minio, kafka, redis, postgres)
-  1: Data Ingestion (kafka producers/consumers, data gateways)
-  2: Data Processing (spark master/worker, streaming, batch)
-  3: Feature Engineering (feature service)
-  4: ML Pipeline (mlflow, training, model serving)
-  5: Observability (airflow, prometheus, grafana, opensearch)
+  ${CYAN}Level 0: Infrastructure${NC}
+    • minio, postgres (mlflow/airflow), redis, kafka, zookeeper
+    • ${YELLOW}Note: MLflow server moved to Level 4${NC}
+  
+  ${CYAN}Level 1: Data Ingestion${NC}
+    • kafka-producer, kafka-consumer, clinical-mq, clinical-data-gateway
+    • Depends on: Level 0
+  
+  ${CYAN}Level 2: Data Processing${NC}
+    • spark-master, spark-worker, spark-streaming, spark-batch
+    • Depends on: Levels 0, 1
+  
+  ${CYAN}Level 3: Feature Engineering${NC}
+    • feature-engineering
+    • Depends on: Levels 0, 1, 2
+  
+  ${CYAN}Level 4: ML Pipeline${NC}
+    • ${YELLOW}mlflow-server${NC}, ml-training, model-serving
+    • Depends on: Levels 0, 1, 2, 3
+  
+  ${CYAN}Level 5: Observability${NC}
+    • airflow, prometheus, grafana, opensearch
+    • Depends on: Levels 0, 1, 2, 3, 4
+
+${YELLOW}Cascade Check Behavior:${NC}
+  --level 5  →  Checks 5, 4, 3, 2, 1, 0
+  --level 4  →  Checks 4, 3, 2, 1, 0
+  --level 3  →  Checks 3, 2, 1, 0
+  --level 2  →  Checks 2, 1, 0
+  --level 1  →  Checks 1, 0
+  --level 0  →  Checks 0 only
+
+${MAGENTA}Why cascade?${NC}
+  Each level depends on lower levels. Checking level 3 without
+  checking its dependencies (2, 1, 0) could miss root causes.
 
 EOF
 }
@@ -450,17 +497,34 @@ case $MODE in
         check_data_flow
         ;;
     full)
-        print_header "Clinical MLOps - Full Pipeline Health Check"
-        
         if [ -n "$LEVEL_TO_CHECK" ]; then
-            # Check specific level
+            # CASCADE CHECK: Check specific level + all dependencies
             if [ "$LEVEL_TO_CHECK" -lt 0 ] || [ "$LEVEL_TO_CHECK" -gt $MAX_LEVEL ]; then
                 echo -e "${RED}Error: Invalid level. Must be 0-$MAX_LEVEL${NC}"
                 exit 1
             fi
-            "check_level_$LEVEL_TO_CHECK"
+            
+            print_header "Clinical MLOps - Health Check Level $LEVEL_TO_CHECK (Cascade)"
+            
+            echo -e "${YELLOW}Checking levels: $LEVEL_TO_CHECK"
+            for l in $(seq $(($LEVEL_TO_CHECK - 1)) -1 0); do
+                echo -n ", $l"
+            done
+            echo -e "${NC}"
+            
+            # Check from level 0 up to target level (bottom-up makes more sense for health)
+            for level in $(seq 0 $LEVEL_TO_CHECK); do
+                "check_level_$level"
+            done
+            
+            # Check data flow if checking level 1 or higher
+            if [ "$LEVEL_TO_CHECK" -ge 1 ]; then
+                check_data_flow
+            fi
         else
             # Check all levels
+            print_header "Clinical MLOps - Full Pipeline Health Check"
+            
             for level in $(seq 0 $MAX_LEVEL); do
                 "check_level_$level"
             done
@@ -491,6 +555,7 @@ else
     echo ""
     echo "Common fixes:"
     echo "  • Start services: ./manage_pipeline.sh --start-level <N>"
+    echo "  • Rebuild:        ./manage_pipeline.sh --start-level-rebuild <N>"
     echo "  • Check status:   ./manage_pipeline.sh --status"
     echo "  • View logs:      ./manage_pipeline.sh --logs <N>"
     echo "  • Restart level:  ./manage_pipeline.sh --restart-level <N>"

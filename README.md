@@ -487,3 +487,8 @@ Data Flow Validation
 📊 Counts files in Bronze layer
 📊 Counts files in Silver layer
 📊 Counts files in Feature store
+
+```sh
+# Use MinIO client to browse entire bucket
+docker exec -it minio sh -c "mc alias set local http://localhost:9000 minioadmin minioadmin && mc ls --recursive local/clinical-mlops/"
+```
