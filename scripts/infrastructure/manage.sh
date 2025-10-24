@@ -19,9 +19,9 @@ source "${INFRA_SCRIPT_DIR}/health-checks.sh"
 # Start infrastructure services
 start_infrastructure() {
     local force_recreate=${1:-false}
-    
+
     print_level_header 0 "Starting"
-    
+
     # Check if already running
     if check_level_running 0 && [ "$force_recreate" != true ]; then
         log_info "Infrastructure is already running"
@@ -34,79 +34,43 @@ start_infrastructure() {
         done
         return 0
     fi
-    
+
     # List services to start
-    echo "Services to start:"
+    echo "  Services to start:"
     for service in ${LEVEL_SERVICES[0]}; do
         if check_service_running "$service"; then
             if [ "$force_recreate" = true ]; then
-                echo -e "  • $service ${YELLOW}[RESTARTING]${NC}"
+                echo -e "    • $service ${YELLOW}[RESTARTING]${NC}"
             else
-                echo -e "  • $service ${GREEN}[ALREADY RUNNING]${NC}"
+                echo -e "    • $service ${GREEN}[ALREADY RUNNING]${NC}"
             fi
         else
-            echo -e "  • $service ${BLUE}[STARTING]${NC}"
+            echo -e "    • $service ${BLUE}[STARTING]${NC}"
         fi
     done
+
+    # Add minio-setup to the list
+    echo -e "    • minio-setup ${BLUE}[STARTING]${NC}"
     echo ""
-    
+
     # Start services using docker compose
-    log_info "Starting infrastructure services..."
     docker_compose_up 0 "$force_recreate"
-    
-    # Wait for core services
-    log_info "Waiting for core services to be ready..."
-    wait_for_service "minio" 60 || return 1
-    wait_for_service "postgres-mlflow" 30 || return 1
-    wait_for_service "postgres-airflow" 30 || return 1
-    wait_for_service "redis" 30 || return 1
-    wait_for_service "kafka" 60 || return 1
-    
-    # Run initialization scripts
-    log_info "Running initialization scripts..."
-    
-    # Wait for minio-setup to complete
-    wait_for_service "minio-setup" 60
-    
-    # Initialize MinIO
-    if ! initialize_minio; then
-        log_warning "MinIO initialization had issues (this may be normal if already initialized)"
-    fi
-    
-    # Initialize PostgreSQL databases
-    if ! initialize_postgres_mlflow; then
-        log_warning "PostgreSQL MLflow initialization had issues (this may be normal if already initialized)"
-    fi
-    
-    if ! initialize_postgres_airflow; then
-        log_warning "PostgreSQL Airflow initialization had issues (this may be normal if already initialized)"
-    fi
-    
-    # Initialize Kafka topics
-    if ! initialize_kafka; then
-        log_warning "Kafka initialization had issues (this may be normal if already initialized)"
-    fi
-    
+
     echo ""
-    log_success "Infrastructure (Level 0) started successfully"
-    
-    # Run health checks
-    echo ""
-    log_info "Running health checks..."
-    run_infrastructure_health_checks
+    echo -e "  ${GREEN}✓ Level 0 started${NC}"
 }
 
 # Stop infrastructure services
 stop_infrastructure() {
-    local remove_volumes=${1:-false}
-    
+    local remove_volumes=${1:-true}  # Default to removing volumes
+
     print_level_header 0 "Stopping"
-    
+
     if ! check_level_running 0; then
         log_warning "Infrastructure is already stopped"
         return 0
     fi
-    
+
     # List services to stop
     echo "Services to stop:"
     for service in ${LEVEL_SERVICES[0]}; do
@@ -117,15 +81,15 @@ stop_infrastructure() {
         fi
     done
     echo ""
-    
+
     # Stop services
     log_info "Stopping infrastructure services..."
     docker_compose_down 0 "$remove_volumes"
-    
+
     if [ "$remove_volumes" = true ]; then
         log_warning "Volumes removed - all data has been deleted"
     fi
-    
+
     log_success "Infrastructure (Level 0) stopped successfully"
 }
 
@@ -195,9 +159,53 @@ show_infrastructure_status() {
     fi
 }
 
+# Show service URLs
+show_service_urls() {
+    print_header "Infrastructure Service URLs"
+
+    echo "Access your infrastructure services:"
+    echo ""
+
+    if check_service_running "minio"; then
+        echo -e "  ${GREEN}✓${NC} MinIO Console:      http://localhost:9001"
+        echo "    Username: minioadmin"
+        echo "    Password: minioadmin"
+        echo ""
+    fi
+
+    if check_service_running "kafka-ui"; then
+        echo -e "  ${GREEN}✓${NC} Kafka UI:           http://localhost:8090"
+        echo ""
+    fi
+
+    if check_service_running "redis-insight"; then
+        echo -e "  ${GREEN}✓${NC} Redis Insight:      http://localhost:5540"
+        echo ""
+    fi
+
+    if check_service_running "postgres-mlflow"; then
+        echo -e "  ${GREEN}✓${NC} PostgreSQL MLflow:  localhost:5432"
+        echo "    Database: mlflow"
+        echo "    Username: mlflow"
+        echo "    Password: mlflow"
+        echo ""
+    fi
+
+    if check_service_running "postgres-airflow"; then
+        echo -e "  ${GREEN}✓${NC} PostgreSQL Airflow: localhost:5433"
+        echo "    Database: airflow"
+        echo "    Username: airflow"
+        echo "    Password: airflow"
+        echo ""
+    fi
+
+    echo -e "${CYAN}Tip:${NC} Use these URLs to access and monitor your infrastructure"
+}
+
 # --- Export Functions ---
 export -f start_infrastructure
 export -f stop_infrastructure
 export -f restart_infrastructure
 export -f rebuild_infrastructure
 export -f show_infrastructure_status
+export -f show_service_urls

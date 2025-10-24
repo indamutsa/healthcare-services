@@ -93,27 +93,28 @@ get_level_status() {
 docker_compose_up() {
     local level=$1
     local force_recreate=${2:-false}
-    local services="${LEVEL_SERVICES[$level]}"
+    local services="${LEVEL_SERVICE_NAMES[$level]:-${LEVEL_SERVICES[$level]}}"
+    local setup_services="${LEVEL_SETUP_SERVICES[$level]:-}"
     local profile="${LEVEL_PROFILES[$level]}"
-    
+
     local compose_args=()
-    
+
     # Add profile if exists
     if [ -n "$profile" ]; then
         compose_args+=(--profile "$profile")
     fi
-    
+
     # Add services
     compose_args+=(up -d)
-    
+
     # Add force recreate flag if needed
     if [ "$force_recreate" = true ]; then
         compose_args+=(--force-recreate)
     fi
-    
-    # Add service names
-    compose_args+=($services)
-    
+
+    # Add service names (both regular and setup services)
+    compose_args+=($services $setup_services)
+
     # Execute docker compose
     docker compose "${compose_args[@]}"
 }
@@ -122,7 +123,7 @@ docker_compose_up() {
 docker_compose_down() {
     local level=$1
     local remove_volumes=${2:-false}
-    local services="${LEVEL_SERVICES[$level]}"
+    local services="${LEVEL_SERVICE_NAMES[$level]:-${LEVEL_SERVICES[$level]}}"
     local profile="${LEVEL_PROFILES[$level]}"
     
     local compose_args=(stop)

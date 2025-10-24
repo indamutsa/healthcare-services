@@ -19,18 +19,26 @@ export NC='\033[0m'  # No Color
 # --- Level Definitions ---
 # Each level has: services, profiles, names, and dependencies
 declare -gA LEVEL_SERVICES
+declare -gA LEVEL_SETUP_SERVICES  # One-time initialization containers
 declare -gA LEVEL_PROFILES
 declare -gA LEVEL_NAMES
 declare -gA LEVEL_DEPENDENCIES
 
 # Level 0: Infrastructure (foundation services)
-LEVEL_SERVICES[0]="minio minio-setup postgres-mlflow postgres-airflow redis redis-insight zookeeper kafka kafka-ui"
+# Note: minio-setup is a one-time init container, excluded from running count
+# For Level 0, container names match service names
+LEVEL_SERVICES[0]="minio postgres-mlflow postgres-airflow redis redis-insight zookeeper kafka kafka-ui"
+LEVEL_SERVICE_NAMES[0]="minio postgres-mlflow postgres-airflow redis redis-insight zookeeper kafka kafka-ui"
+LEVEL_SETUP_SERVICES[0]="minio-setup"  # One-time initialization containers
 LEVEL_PROFILES[0]=""  # No profile - always available
 LEVEL_NAMES[0]="Infrastructure"
 LEVEL_DEPENDENCIES[0]=""  # No dependencies
 
 # Level 1: Data Ingestion
-LEVEL_SERVICES[1]="kafka-producer kafka-consumer clinical-mq clinical-data-gateway lab-results-processor clinical-data-generator"
+# Note: LEVEL_SERVICES contains CONTAINER NAMES for status checks
+# LEVEL_SERVICE_NAMES contains docker-compose SERVICE NAMES for start/stop
+LEVEL_SERVICES[1]="kafka-producer kafka-consumer clinical-mq clinical-gateway lab-processor clinical-data-generator"
+LEVEL_SERVICE_NAMES[1]="kafka-producer kafka-consumer clinical-mq clinical-data-gateway lab-results-processor clinical-data-generator"
 LEVEL_PROFILES[1]="data-ingestion"
 LEVEL_NAMES[1]="Data Ingestion"
 LEVEL_DEPENDENCIES[1]="0"

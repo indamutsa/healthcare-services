@@ -67,36 +67,27 @@ services:
         condition: service_healthy
     networks:
       - mlops-network
-    entrypoint: >
-      /bin/sh -c "
-      echo '⏳ Waiting for MinIO to become ready...';
-      # Wait for MinIO to be ready using mc (no external tools needed)
-      until mc ready local 2>/dev/null; do
-        echo 'MinIO not ready yet...';
-        sleep 2;
-      done;
-
-      until mc alias set myminio http://minio:9000 minioadmin minioadmin 2>/dev/null; do
-        echo 'Waiting for MinIO...';
-        sleep 2;
-      done;
-
-      echo '🔧 Configuring MinIO client (mc)...';
-      mc alias set myminio http://minio:9000 minioadmin minioadmin;
-
-      echo '📦 Creating buckets...';
-      mc mb myminio/clinical-mlops --ignore-existing;
-      mc mb myminio/mlflow-artifacts --ignore-existing;
-      mc mb myminio/dvc-storage --ignore-existing;
-
-      echo '🌍 Applying anonymous download policies...';
-      mc anonymous set download myminio/clinical-mlops;
-      mc anonymous set download myminio/mlflow-artifacts;
-      mc anonymous set download myminio/dvc-storage;
-
-      echo '✅ Buckets successfully configured:';
-      mc ls myminio/;
-      "
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo '⏳ Waiting for MinIO to become ready...'
+        until mc alias set myminio http://minio:9000 minioadmin minioadmin 2>/dev/null; do
+          echo 'Waiting for MinIO...'
+          sleep 2
+        done
+        echo '🔧 Configuring MinIO client (mc)...'
+        mc alias set myminio http://minio:9000 minioadmin minioadmin
+        echo '📦 Creating buckets...'
+        mc mb myminio/clinical-mlops --ignore-existing
+        mc mb myminio/mlflow-artifacts --ignore-existing
+        mc mb myminio/dvc-storage --ignore-existing
+        echo '🌍 Applying anonymous download policies...'
+        mc anonymous set download myminio/clinical-mlops
+        mc anonymous set download myminio/mlflow-artifacts
+        mc anonymous set download myminio/dvc-storage
+        echo '✅ Buckets successfully configured:'
+        mc ls myminio/
     restart: "no"
 
 
@@ -851,24 +842,3 @@ services:
       - mlops-network
     profiles:
       - observability
-
-  feature-engineering-optimized:
-    build: ./applications/feature-engineering
-    container_name: feature-engineering-optimized
-    environment:
-      - PROCESS_DATE=2025-10-23
-      - S3_ENDPOINT=http://minio:9000
-      - S3_ACCESS_KEY=minioadmin
-      - S3_SECRET_KEY=minioadmin
-      - S3_BUCKET=clinical-mlops
-    networks:
-      - mlops-network
-    depends_on:
-      - minio
-      - redis
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
