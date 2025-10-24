@@ -4,10 +4,11 @@
 # Validates user input and provides clear error messages
 #
 
-# Source configuration and utils
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.sh"
-source "${SCRIPT_DIR}/utils.sh"
+# Source configuration and utils (only if not already loaded)
+if [ -z "${COMMON_CONFIG_LOADED:-}" ]; then
+    VALIDATION_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "${VALIDATION_SCRIPT_DIR}/config.sh"
+fi
 
 # --- Command Validation ---
 

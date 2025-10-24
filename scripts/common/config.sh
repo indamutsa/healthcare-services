@@ -4,6 +4,9 @@
 # All pipeline levels and their dependencies are defined here
 #
 
+# Mark as loaded to prevent circular sourcing
+export COMMON_CONFIG_LOADED=true
+
 # --- Colors for output ---
 export RED='\033[0;31m'
 export YELLOW='\033[1;33m'

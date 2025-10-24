@@ -4,9 +4,11 @@
 # Provides: logging, Docker operations, wait functions, and helpers
 #
 
-# Source configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/config.sh"
+# Source configuration (only if not already loaded)
+if [ -z "${COMMON_CONFIG_LOADED:-}" ]; then
+    UTILS_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "${UTILS_SCRIPT_DIR}/config.sh"
+fi
 
 # --- Logging Functions ---
 
