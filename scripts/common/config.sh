@@ -65,14 +65,22 @@ LEVEL_PROFILES[4]="ml-pipeline"
 LEVEL_NAMES[4]="ML Pipeline"
 LEVEL_DEPENDENCIES[4]="0 1 2 3"
 
-# Level 5: Observability
-LEVEL_SERVICES[5]="airflow-init airflow-webserver airflow-scheduler prometheus grafana monitoring-service opensearch opensearch-dashboards data-prepper filebeat"
-LEVEL_PROFILES[5]="observability"
-LEVEL_NAMES[5]="Observability"
+# Level 5: Orchestration (Airflow)
+LEVEL_SERVICES[5]="airflow-init airflow-webserver airflow-scheduler"
+LEVEL_SERVICE_NAMES[5]="postgres-airflow airflow-init airflow-webserver airflow-scheduler"
+LEVEL_PROFILES[5]="orchestration"
+LEVEL_NAMES[5]="Orchestration"
 LEVEL_DEPENDENCIES[5]="0 1 2 3 4"
 
+# Level 6: Observability
+LEVEL_SERVICES[6]="prometheus grafana monitoring-service opensearch opensearch-dashboards data-prepper filebeat"
+LEVEL_SERVICE_NAMES[6]="prometheus grafana monitoring-service opensearch opensearch-dashboards data-prepper filebeat"
+LEVEL_PROFILES[6]="observability"
+LEVEL_NAMES[6]="Observability"
+LEVEL_DEPENDENCIES[6]="0 1 2 3 4 5"
+
 # Maximum level number
-export MAX_LEVEL=5
+export MAX_LEVEL=6
 
 # --- MinIO Configuration ---
 export MINIO_ENDPOINT="http://localhost:9000"

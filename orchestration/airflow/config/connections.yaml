@@ -1,0 +1,95 @@
+connections:
+  - id: kafka_clinical
+    type: kafka
+    host: kafka
+    port: 29092
+    extra: |
+      {
+        "bootstrap_servers": "kafka:29092",
+        "client_id": "airflow_clinical",
+        "security_protocol": "PLAINTEXT"
+      }
+
+  - id: mlflow_tracking
+    type: http
+    host: mlflow-server
+    port: 5000
+    extra: |
+      {
+        "scheme": "http"
+      }
+
+  - id: redis_features
+    type: redis
+    host: redis
+    port: 6379
+    extra: |
+      {
+        "db": 0,
+        "ssl": false
+      }
+
+  - id: minio_storage
+    type: s3
+    host: minio
+    port: 9000
+    login: minioadmin
+    password: minioadmin
+    extra: |
+      {
+        "endpoint_url": "http://minio:9000",
+        "use_ssl": false
+      }
+
+  - id: spark_cluster
+    type: spark
+    host: spark-master
+    port: 7077
+    extra: |
+      {
+        "master": "spark://spark-master:7077",
+        "deploy_mode": "cluster"
+      }
+
+  - id: model_serving
+    type: http
+    host: model-serving
+    port: 8000
+    extra: |
+      {
+        "scheme": "http"
+      }
+
+  - id: postgres_mlflow
+    type: postgres
+    host: postgres-mlflow
+    port: 5432
+    login: mlflow
+    password: mlflow
+    schema: mlflow
+
+  - id: postgres_airflow
+    type: postgres
+    host: postgres-airflow
+    port: 5432
+    login: airflow
+    password: airflow
+    schema: airflow
+
+  - id: clinical_gateway
+    type: http
+    host: clinical-gateway
+    port: 8080
+    extra: |
+      {
+        "scheme": "http"
+      }
+
+  - id: lab_processor
+    type: http
+    host: lab-processor
+    port: 8081
+    extra: |
+      {
+        "scheme": "http"
+      }

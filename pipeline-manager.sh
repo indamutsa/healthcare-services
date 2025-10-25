@@ -9,7 +9,7 @@ set -e
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FEATURE_ENGINEERING_DIR="${SCRIPT_DIR}/scripts/feature-engineering"
-ACTIVE_MAX_LEVEL=4
+ACTIVE_MAX_LEVEL=5
 
 # Source common utilities
 source "${SCRIPT_DIR}/scripts/common/config.sh"
@@ -27,6 +27,8 @@ source "${SCRIPT_DIR}/scripts/feature-engineering/manage.sh"
 source "${SCRIPT_DIR}/scripts/feature-engineering/health-checks.sh"
 source "${SCRIPT_DIR}/scripts/ml-layer/manage.sh"
 source "${SCRIPT_DIR}/scripts/ml-layer/health-checks.sh"
+source "${SCRIPT_DIR}/scripts/orchestration/manage.sh"
+source "${SCRIPT_DIR}/scripts/orchestration/health-checks.sh"
 
 # --- Command Line Parsing ---
 
@@ -73,9 +75,9 @@ ${GREEN}Level Selection:${NC}
                         2 = Data Processing
                         3 = Feature Engineering
                         4 = ML Pipeline
-                        5 = Observability
+                        5 = Orchestration (Airflow)
 
-${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-4
+${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-5
 
 ${GREEN}Information Commands (Can be combined):${NC}
   -h, --health-check    Run health checks
@@ -121,6 +123,11 @@ ${GREEN}Level-Specific Commands:${NC}
     $0 --start --level 4             Start MLflow + model serving (auto-starts 0-3)
     $0 --run-training --level 4      Launch a one-off training job via docker compose run
     $0 --stop --level 4              Cascade stop for ML pipeline and dependencies
+
+  Level 5 - Orchestration (Airflow)
+    $0 --start --level 5             Start Airflow webserver + scheduler (auto-starts 0-4)
+    $0 -vh --level 5                 Visualize and run health checks for Airflow
+    $0 --stop --level 5              Cascade stop for Airflow and dependencies
 
 ${YELLOW}Command Rules:${NC}
   • Only ONE management command per execution
@@ -382,6 +389,7 @@ run_summary_for_level() {
         2) show_data_processing_status ;;
         3) show_feature_engineering_status ;;
         4) show_ml_pipeline_status ;;
+        5) show_orchestration_status ;;
         *)
             log_warning "Summary not implemented for level $level yet"
             ;;
@@ -396,6 +404,7 @@ run_health_checks_for_level() {
         2) run_data_processing_health_checks ;;
         3) run_feature_engineering_health_checks ;;
         4) run_ml_pipeline_health_checks ;;
+        5) run_orchestration_health_checks ;;
         *)
             log_warning "Health checks not implemented for level $level yet"
             ;;
@@ -435,6 +444,12 @@ run_visualization_for_level() {
             echo ""
             inspect_ml_pipeline_outputs
             ;;
+        5)
+            log_info "Orchestration Visualization"
+            quick_orchestration_status
+            echo ""
+            show_orchestration_urls
+            ;;
         *)
             log_warning "Visualization not implemented for level $level yet"
             ;;
@@ -449,6 +464,7 @@ run_service_urls_for_level() {
         2) show_data_processing_urls ;;
         3) show_feature_engineering_urls ;;
         4) show_ml_pipeline_urls ;;
+        5) show_orchestration_urls ;;
         *)
             log_warning "Service URLs not available for level $level yet"
             ;;
@@ -458,6 +474,7 @@ run_service_urls_for_level() {
 # --- Main Execution ---
 
 main() {
+    local exit_status=0
     # Parse command line
     parse_arguments "$@"
     
@@ -490,6 +507,9 @@ main() {
                 4)
                     start_ml_pipeline false
                     ;;
+                5)
+                    start_orchestration false
+                    ;;
             esac
             ;;
         stop)
@@ -509,6 +529,9 @@ main() {
                 4)
                     stop_ml_pipeline true  # Remove containers AND volumes
                     ;;
+                5)
+                    stop_orchestration true  # Remove containers AND volumes
+                    ;;
             esac
             ;;
         restart)
@@ -527,6 +550,9 @@ main() {
                     ;;
                 4)
                     rebuild_ml_pipeline
+                    ;;
+                5)
+                    rebuild_orchestration
                     ;;
             esac
             ;;
@@ -551,6 +577,9 @@ main() {
                         ;;
                     4)
                         stop_ml_pipeline true
+                        ;;
+                    5)
+                        stop_orchestration true
                         ;;
                 esac
                 docker compose down -v --remove-orphans 2>/dev/null || true
@@ -580,12 +609,18 @@ main() {
         local health_levels=()
         mapfile -t health_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
         local health_last=$((${#health_levels[@]}-1))
+        local health_result=0
         for idx in "${!health_levels[@]}"; do
-            run_health_checks_for_level "${health_levels[$idx]}"
+            if ! run_health_checks_for_level "${health_levels[$idx]}"; then
+                health_result=1
+            fi
             if [ "$idx" -lt "$health_last" ]; then
                 echo ""
             fi
         done
+        if [ "$health_result" -ne 0 ]; then
+            exit_status=1
+        fi
     fi
 
     if [ "$VISUALIZE" = true ]; then
@@ -700,6 +735,8 @@ main() {
         echo "  • Visualize:     $0 -v --level $TARGET_LEVEL"
         echo ""
     fi
+
+    return "$exit_status"
 }
 
 # Run main

@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "/home/codespace/.claude/statusline-command.sh"
+  },
   "permissions": {
     "allow": [
       "Bash(docker-compose restart:*)",
@@ -24,7 +28,14 @@
       "Bash(docker exec:*)",
       "Bash(docker compose restart:*)",
       "Bash(docker compose:*)",
-      "Bash(docker compose up:*)"
+      "Bash(docker compose up:*)",
+      "Bash(for file in /workspaces/clinical-trials-service/orchestration/kubeflow/components/*.py)",
+      "Bash(do echo \"$file\")",
+      "Bash(docker info:*)",
+      "Bash(docker version:*)",
+      "Bash(netstat:*)",
+      "Bash(lsof:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

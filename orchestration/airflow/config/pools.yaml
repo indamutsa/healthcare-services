@@ -1,0 +1,40 @@
+pools:
+  - pool: spark_jobs
+    slots: 4
+    description: Pool for Spark job submissions to prevent cluster overload
+
+  - pool: mlflow_operations
+    slots: 2
+    description: Pool for MLflow operations (experiment tracking, model registry)
+
+  - pool: kafka_operations
+    slots: 3
+    description: Pool for Kafka producer/consumer operations
+
+  - pool: feature_engineering
+    slots: 2
+    description: Pool for feature engineering and feature store operations
+
+  - pool: data_validation
+    slots: 5
+    description: Pool for data quality validation tasks
+
+  - pool: model_training
+    slots: 1
+    description: Pool for model training jobs (resource intensive)
+
+  - pool: model_serving
+    slots: 3
+    description: Pool for model serving and inference operations
+
+  - pool: alert_processing
+    slots: 10
+    description: Pool for alert processing tasks (high priority)
+
+  - pool: backup_operations
+    slots: 1
+    description: Pool for backup and restore operations
+
+  - pool: monitoring_tasks
+    slots: 8
+    description: Pool for monitoring and health check tasks

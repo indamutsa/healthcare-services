@@ -47,19 +47,19 @@ check_minio() {
     echo ""
     
     run_check "MinIO server accessible" \
-        "curl -sf ${MINIO_ENDPOINT}/minio/health/live"
+        "curl -sf ${MINIO_ENDPOINT}/minio/health/live" || true
     
     run_check "MinIO setup completed" \
         "docker logs minio-setup 2>&1 | grep -q 'Buckets successfully configured'" \
-        true
+        true || true
     
     run_check "MinIO client configured" \
-        "docker exec minio mc alias set myminio http://localhost:9000 minioadmin minioadmin"
+        "docker exec minio mc alias set myminio http://localhost:9000 minioadmin minioadmin" || true
     
     # Check buckets
     for bucket in $MINIO_BUCKETS; do
         run_check "Bucket '$bucket' exists" \
-            "check_bucket_exists '$bucket'"
+            "check_bucket_exists '$bucket'" || true
     done
     
     echo ""
@@ -72,19 +72,19 @@ check_kafka() {
     echo ""
     
     run_check "Zookeeper running" \
-        "docker exec zookeeper /bin/sh -c 'echo srvr | nc localhost 2181' | grep -q Mode"
+        "docker exec zookeeper /bin/sh -c 'echo srvr | nc localhost 2181' | grep -q Mode" || true
     
     run_check "Kafka broker accessible" \
-        "docker exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092"
+        "docker exec kafka kafka-broker-api-versions --bootstrap-server localhost:9092" || true
     
     run_check "Kafka UI accessible" \
         "curl -sf http://localhost:8090" \
-        true
+        true || true
     
     # Check if topics exist (warning if not)
     run_check "Kafka topics exist" \
         "docker exec kafka kafka-topics --bootstrap-server localhost:9092 --list | head -1" \
-        true
+        true || true
     
     echo ""
 }
@@ -96,17 +96,17 @@ check_postgres() {
     echo ""
     
     run_check "PostgreSQL MLflow accessible" \
-        "check_postgres_mlflow_ready"
+        "check_postgres_mlflow_ready" || true
     
     run_check "PostgreSQL Airflow accessible" \
-        "check_postgres_airflow_ready"
+        "check_postgres_airflow_ready" || true
     
     # Check database connectivity
     run_check "MLflow database exists" \
-        "docker exec postgres-mlflow psql -U mlflow -lqt | cut -d \| -f 1 | grep -qw mlflow"
+        "docker exec postgres-mlflow psql -U mlflow -lqt | cut -d \| -f 1 | grep -qw mlflow" || true
     
     run_check "Airflow database exists" \
-        "docker exec postgres-airflow psql -U airflow -lqt | cut -d \| -f 1 | grep -qw airflow"
+        "docker exec postgres-airflow psql -U airflow -lqt | cut -d \| -f 1 | grep -qw airflow" || true
     
     echo ""
 }
@@ -118,14 +118,14 @@ check_redis() {
     echo ""
     
     run_check "Redis server accessible" \
-        "docker exec redis redis-cli ping"
+        "docker exec redis redis-cli ping" || true
     
     run_check "Redis can set/get keys" \
-        "docker exec redis redis-cli set healthcheck 'ok' && docker exec redis redis-cli get healthcheck | grep -q 'ok'"
+        "docker exec redis redis-cli set healthcheck 'ok' && docker exec redis redis-cli get healthcheck | grep -q 'ok'" || true
     
     run_check "Redis Insight accessible" \
         "curl -sf http://localhost:5540" \
-        true
+        true || true
     
     # Clean up test key
     docker exec redis redis-cli del healthcheck > /dev/null 2>&1 || true

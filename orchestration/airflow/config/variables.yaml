@@ -1,0 +1,80 @@
+variables:
+  - key: clinical_data_bucket
+    value: clinical-mlops
+    description: MinIO bucket for clinical data storage
+
+  - key: mlflow_artifact_bucket
+    value: mlflow-artifacts
+    description: MinIO bucket for MLflow artifacts
+
+  - key: feature_store_redis_prefix
+    value: patient:
+    description: Redis key prefix for feature store
+
+  - key: kafka_patient_vitals_topic
+    value: patient-vitals
+    description: Kafka topic for patient vitals data
+
+  - key: kafka_adverse_events_topic
+    value: adverse-events
+    description: Kafka topic for adverse events data
+
+  - key: model_name
+    value: adverse-event-predictor
+    description: Name of the production model
+
+  - key: model_stage
+    value: production
+    description: MLflow model stage for serving
+
+  - key: spark_master_url
+    value: spark://spark-master:7077
+    description: Spark master URL for job submission
+
+  - key: data_processing_batch_size
+    value: 1000
+    description: Number of records per batch for processing
+
+  - key: feature_engineering_window_days
+    value: 30
+    description: Time window for feature engineering (days)
+
+  - key: model_retraining_interval_days
+    value: 7
+    description: Interval for automatic model retraining (days)
+
+  - key: data_quality_threshold
+    value: 0.95
+    description: Minimum data quality score threshold
+
+  - key: model_performance_threshold
+    value: 0.85
+    description: Minimum model performance threshold for promotion
+
+  - key: alert_email_recipients
+    value: clinical-mlops-team@example.com
+    description: Email recipients for pipeline alerts
+
+  - key: slack_webhook_url
+    value: https://hooks.slack.com/services/clinical-alerts
+    description: Slack webhook for notifications
+
+  - key: max_retry_attempts
+    value: 3
+    description: Maximum number of retry attempts for failed tasks
+
+  - key: retry_delay_minutes
+    value: 5
+    description: Delay between retry attempts in minutes
+
+  - key: execution_timeout_hours
+    value: 2
+    description: Maximum execution time for tasks in hours
+
+  - key: clinical_data_schema_version
+    value: 1.2
+    description: Current schema version for clinical data
+
+  - key: feature_count_threshold
+    value: 137
+    description: Expected number of features per patient
