@@ -19,6 +19,7 @@ export NC='\033[0m'  # No Color
 # --- Level Definitions ---
 # Each level has: services, profiles, names, and dependencies
 declare -gA LEVEL_SERVICES
+declare -gA LEVEL_SERVICE_NAMES
 declare -gA LEVEL_SETUP_SERVICES  # One-time initialization containers
 declare -gA LEVEL_PROFILES
 declare -gA LEVEL_NAMES
@@ -58,7 +59,8 @@ LEVEL_NAMES[3]="Feature Engineering"
 LEVEL_DEPENDENCIES[3]="0 1 2"
 
 # Level 4: ML Pipeline
-LEVEL_SERVICES[4]="mlflow-server ml-training model-serving"
+LEVEL_SERVICES[4]="mlflow-server model-serving"
+LEVEL_SERVICE_NAMES[4]="mlflow-server model-serving"
 LEVEL_PROFILES[4]="ml-pipeline"
 LEVEL_NAMES[4]="ML Pipeline"
 LEVEL_DEPENDENCIES[4]="0 1 2 3"
@@ -83,6 +85,7 @@ export POSTGRES_MLFLOW_HOST="localhost"
 export POSTGRES_MLFLOW_PORT="5432"
 export POSTGRES_MLFLOW_USER="mlflow"
 export POSTGRES_MLFLOW_DB="mlflow"
+export MLFLOW_TRACKING_PORT="5050"
 
 export POSTGRES_AIRFLOW_HOST="localhost"
 export POSTGRES_AIRFLOW_PORT="5433"

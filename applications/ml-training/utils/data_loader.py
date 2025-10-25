@@ -4,7 +4,7 @@ Load and prepare data from feature store.
 
 import pandas as pd
 import numpy as np
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 from pyspark.sql import SparkSession
 from datetime import datetime
 
@@ -15,25 +15,33 @@ class FeatureStoreLoader:
     def __init__(self, config: dict):
         """
         Initialize loader.
-        
+
         Args:
             config: Configuration dictionary
         """
         self.config = config
         self.spark = self._init_spark()
+        self.data_quality_warnings = {}
         
     def _init_spark(self) -> SparkSession:
         """Initialize Spark session with S3 configuration."""
         print("Initializing Spark session...")
         
-        spark = SparkSession.builder \
-            .appName("FeatureLoader") \
-            .config("spark.hadoop.fs.s3a.endpoint", self.config['s3']['endpoint']) \
-            .config("spark.hadoop.fs.s3a.access.key", self.config['s3']['access_key']) \
-            .config("spark.hadoop.fs.s3a.secret.key", self.config['s3']['secret_key']) \
-            .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+        spark = (
+            SparkSession.builder
+            .appName("FeatureLoader")
+            .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4")
+            .config("spark.hadoop.fs.s3a.endpoint", self.config['s3']['endpoint'])
+            .config("spark.hadoop.fs.s3a.access.key", self.config['s3']['access_key'])
+            .config("spark.hadoop.fs.s3a.secret.key", self.config['s3']['secret_key'])
+            .config("spark.hadoop.fs.s3a.path.style.access", "true")
+            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+            .config("spark.sql.session.timeZone", "UTC")
             .getOrCreate()
+        )
+
+        spark.sparkContext.setLogLevel("WARN")
         
         print("✓ Spark session initialized")
         return spark
@@ -84,26 +92,61 @@ class FeatureStoreLoader:
             raise
     
     def _validate_data(self, df: pd.DataFrame):
-        """Validate loaded data."""
+        """Validate loaded data and collect quality warnings."""
         target_col = self.config['data']['target_column']
-        
+
         # Check target column exists
         if target_col not in df.columns:
             raise ValueError(f"Target column '{target_col}' not found in data")
-        
+
         # Check for missing values
         missing_pct = df.isnull().sum() / len(df) * 100
-        if missing_pct.max() > 50:
-            print(f"⚠ Warning: Some columns have >50% missing values")
-        
+        high_missing_cols = missing_pct[missing_pct > 50]
+
+        if len(high_missing_cols) > 0:
+            print(f"⚠ Warning: {len(high_missing_cols)} columns have >50% missing values")
+            self.data_quality_warnings['high_missing_values'] = {
+                'n_columns': len(high_missing_cols),
+                'max_missing_pct': float(missing_pct.max()),
+                'columns': high_missing_cols.index.tolist()[:10]  # Top 10
+            }
+
+        # Check for columns with all same values
+        constant_cols = [col for col in df.columns if df[col].nunique() <= 1]
+        if len(constant_cols) > 0:
+            print(f"⚠ Warning: {len(constant_cols)} columns have constant values")
+            self.data_quality_warnings['constant_columns'] = {
+                'n_columns': len(constant_cols),
+                'columns': constant_cols[:10]  # Top 10
+            }
+
         # Check target distribution
         target_dist = df[target_col].value_counts(normalize=True)
         print(f"\nTarget distribution:")
         for val, pct in target_dist.items():
             print(f"  {val}: {pct:.2%}")
-        
-        if target_dist.min() < 0.01:
-            print(f"⚠ Warning: Severe class imbalance detected")
+
+        imbalance_ratio = target_dist.min() / target_dist.max()
+        if imbalance_ratio < 0.01:
+            print(f"⚠ Warning: Severe class imbalance detected (ratio: {imbalance_ratio:.4f})")
+            self.data_quality_warnings['class_imbalance'] = {
+                'imbalance_ratio': float(imbalance_ratio),
+                'minority_class_pct': float(target_dist.min())
+            }
+
+        # Check for duplicate rows
+        n_duplicates = df.duplicated().sum()
+        if n_duplicates > 0:
+            dup_pct = n_duplicates / len(df) * 100
+            print(f"⚠ Warning: {n_duplicates} duplicate rows ({dup_pct:.2f}%)")
+            self.data_quality_warnings['duplicate_rows'] = {
+                'n_duplicates': int(n_duplicates),
+                'duplicate_pct': float(dup_pct)
+            }
+
+    def get_data_quality_warnings(self) -> Dict:
+        """Return collected data quality warnings."""
+        return self.data_quality_warnings
     
     def prepare_features(
         self, 
@@ -134,7 +177,21 @@ class FeatureStoreLoader:
             timestamps = pd.Series(range(len(df)), index=df.index)
         
         # Get feature columns
-        exclude_cols = set(self.config['data']['exclude_columns'])
+        default_excludes = {
+            "patient_id",
+            "timestamp",
+            "updated_at",
+            "adverse_event_24h",
+            "date",
+            "processing_date",
+            "processed_at",
+            "feature_version",
+            "source",
+            "trial_site",
+            "trial_arm",
+            "kafka_timestamp"
+        }
+        exclude_cols = default_excludes.union(set(self.config['data'].get('exclude_columns', [])))
         feature_cols = [col for col in df.columns if col not in exclude_cols]
         
         # Extract features

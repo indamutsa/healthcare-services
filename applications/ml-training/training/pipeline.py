@@ -80,23 +80,28 @@ class TrainingPipeline:
         print(f"\n{'='*60}")
         print("Loading Data")
         print(f"{'='*60}")
-        
+
         loader = FeatureStoreLoader(self.config)
-        
+
         # Load from feature store
         df = loader.load_data()
         X, y, timestamps, feature_names = loader.prepare_features(df)
-        
+
         # Temporal split
         X_train, X_val, X_test, y_train, y_val, y_test = loader.temporal_split(
             X, y, timestamps
         )
-        
+
         # Log dataset info to MLflow
         self.logger.log_dataset_info(X_train, y_train, X_val, y_val, X_test, y_test)
-        
+
+        # Log data quality warnings
+        data_warnings = loader.get_data_quality_warnings()
+        if data_warnings:
+            self.logger.log_data_quality_warnings(data_warnings)
+
         loader.close()
-        
+
         return X_train, X_val, X_test, y_train, y_val, y_test
     
     def _preprocess(self, X_train, X_val, X_test):

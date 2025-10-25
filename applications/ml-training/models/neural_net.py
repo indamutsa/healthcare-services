@@ -8,7 +8,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 from typing import Dict, Tuple, Optional
-from ..utils.early_stopping import EarlyStopping
+from utils.early_stopping import EarlyStopping
 
 
 class ClinicalNN(nn.Module):

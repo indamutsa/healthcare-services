@@ -9,7 +9,22 @@
       "Bash(docker-compose up:*)",
       "Bash(chmod:*)",
       "Bash(./pipeline-manager.sh:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(find:*)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(python3:*)",
+      "Bash(while read dir)",
+      "Bash(do [ -f \"$dir/__init__.py\" ])",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(docker run:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker build:*)",
+      "Bash(timeout 120 ./pipeline-manager.sh:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker compose restart:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker compose up:*)"
     ],
     "deny": [],
     "ask": []

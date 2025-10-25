@@ -4,12 +4,16 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    openjdk-11-jre-headless \
+    openjdk-21-jre-headless \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Java home
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+# Set Java home - will be auto-detected after installation
+RUN ARCH=$(dpkg --print-architecture) && \
+    ln -sf /usr/lib/jvm/java-21-openjdk-${ARCH} /usr/lib/jvm/java-21-openjdk
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Copy requirements
 COPY requirements.txt .

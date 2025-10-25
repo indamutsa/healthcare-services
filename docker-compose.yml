@@ -517,24 +517,26 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "5050:5050"
+      - "5050:5000"
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
+      GUNICORN_CMD_ARGS: "--bind 0.0.0.0:5000 --workers 4 --timeout 120"
     networks:
       - mlops-network
     command: >
-      bash -c "
-      pip install mlflow boto3 psycopg2-binary &&
-      mlflow server 
-        --backend-store-uri postgresql://mlflow:mlflow@postgres-mlflow:5432/mlflow 
-        --default-artifact-root s3://mlflow-artifacts/ 
-        --host 0.0.0.0 
-        --port 5000
-      "
+      sh -c '
+      pip install -q --no-cache-dir mlflow==2.8.1 boto3 psycopg2-binary &&
+      mlflow server
+      --backend-store-uri postgresql://mlflow:mlflow@postgres-mlflow:5432/mlflow
+      --default-artifact-root s3://mlflow-artifacts/
+      --host 0.0.0.0
+      --port 5000
+      '
+
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -21,7 +21,7 @@ data:
   
   # Date range for training
   start_date: "2025-09-01"
-  end_date: "2025-10-24"
+  end_date: "2025-10-25"
   
   # Target variable
   target_column: "adverse_event_24h"
@@ -33,6 +33,13 @@ data:
     - "updated_at"
     - "adverse_event_24h"
     - "date"
+    - "processing_date"
+    - "processed_at"
+    - "feature_version"
+    - "source"
+    - "trial_site"
+    - "trial_arm"
+    - "kafka_timestamp"
   
   # Train/Val/Test split (temporal)
   split_ratios:

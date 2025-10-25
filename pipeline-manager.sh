@@ -9,6 +9,7 @@ set -e
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FEATURE_ENGINEERING_DIR="${SCRIPT_DIR}/scripts/feature-engineering"
+ACTIVE_MAX_LEVEL=4
 
 # Source common utilities
 source "${SCRIPT_DIR}/scripts/common/config.sh"
@@ -24,6 +25,8 @@ source "${SCRIPT_DIR}/scripts/processing-layer/manage.sh"
 source "${SCRIPT_DIR}/scripts/processing-layer/health-checks.sh"
 source "${SCRIPT_DIR}/scripts/feature-engineering/manage.sh"
 source "${SCRIPT_DIR}/scripts/feature-engineering/health-checks.sh"
+source "${SCRIPT_DIR}/scripts/ml-layer/manage.sh"
+source "${SCRIPT_DIR}/scripts/ml-layer/health-checks.sh"
 
 # --- Command Line Parsing ---
 
@@ -46,6 +49,7 @@ RUN_QUERY_OFFLINE=false
 QUERY_OFFLINE_DATE=""
 RUN_QUERY_ONLINE=false
 QUERY_ONLINE_PATIENT=""
+RUN_TRAINING=false
 
 # Show usage
 show_usage() {
@@ -63,7 +67,7 @@ ${GREEN}Management Commands (Mutually Exclusive):${NC}
   --clean               Full cleanup (interactive confirmation)
 
 ${GREEN}Level Selection:${NC}
-  --level <N>           Target level (0-5)
+  --level <N>           Target level (0-${ACTIVE_MAX_LEVEL})
                         0 = Infrastructure
                         1 = Data Ingestion
                         2 = Data Processing
@@ -71,7 +75,7 @@ ${GREEN}Level Selection:${NC}
                         4 = ML Pipeline
                         5 = Observability
 
-${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-3
+${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-4
 
 ${GREEN}Information Commands (Can be combined):${NC}
   -h, --health-check    Run health checks
@@ -87,6 +91,9 @@ ${GREEN}Feature Engineering Utilities (--level 3 only):${NC}
   --monitor-feature-pipeline [DATE]  Run end-to-end feature pipeline monitor
   --query-offline-features [DATE]  Explore offline feature Parquet data
   --query-online-features [PATIENT] Inspect a patient's online features from Redis
+
+${GREEN}ML Pipeline Utilities (--level 4 only):${NC}
+  --run-training                   Trigger an on-demand ML training job (Docker Compose run)
 
 ${GREEN}Level-Specific Commands:${NC}
   Level 0 - Infrastructure
@@ -109,6 +116,11 @@ ${GREEN}Level-Specific Commands:${NC}
     $0 --compare-stores --level 3    Compare offline vs online feature stores
     $0 --monitor-feature-pipeline 2025-10-25 --level 3  Monitor pipeline for a specific date
     $0 --query-online-features PT00042 --level 3        Inspect online features for a patient
+
+  Level 4 - ML Pipeline
+    $0 --start --level 4             Start MLflow + model serving (auto-starts 0-3)
+    $0 --run-training --level 4      Launch a one-off training job via docker compose run
+    $0 --stop --level 4              Cascade stop for ML pipeline and dependencies
 
 ${YELLOW}Command Rules:${NC}
   • Only ONE management command per execution
@@ -249,14 +261,22 @@ parse_arguments() {
                     shift
                 fi
                 ;;
+            --run-training)
+                RUN_TRAINING=true
+                shift
+                ;;
             --level)
                 if [ -z "$2" ]; then
-                    log_error "Please specify a level (0-3)"
+                    log_error "Please specify a level (0-${ACTIVE_MAX_LEVEL})"
                     exit 1
                 fi
                 TARGET_LEVEL=$2
-                if [ "$TARGET_LEVEL" -lt 0 ] || [ "$TARGET_LEVEL" -gt 3 ]; then
-                    log_error "Invalid level. Must be 0-3 (currently supporting Levels 0-3)"
+                if ! [[ "$TARGET_LEVEL" =~ ^[0-9]+$ ]]; then
+                    log_error "Invalid level. Must be a number between 0 and ${ACTIVE_MAX_LEVEL}"
+                    exit 1
+                fi
+                if [ "$TARGET_LEVEL" -lt 0 ] || [ "$TARGET_LEVEL" -gt "$ACTIVE_MAX_LEVEL" ]; then
+                    log_error "Invalid level. Must be 0-${ACTIVE_MAX_LEVEL} (currently supporting Levels 0-${ACTIVE_MAX_LEVEL})"
                     exit 1
                 fi
                 shift 2
@@ -306,6 +326,11 @@ parse_arguments() {
             exit 1
         fi
     fi
+
+    if [ "$RUN_TRAINING" = true ] && [ "$TARGET_LEVEL" -ne 4 ]; then
+        log_error "ML pipeline training utility requires --level 4"
+        exit 1
+    fi
 }
 
 # --- Main Execution ---
@@ -340,6 +365,9 @@ main() {
                 3)
                     start_feature_engineering false
                     ;;
+                4)
+                    start_ml_pipeline false
+                    ;;
             esac
             ;;
         stop)
@@ -356,6 +384,9 @@ main() {
                 3)
                     stop_feature_engineering true  # Remove containers AND volumes
                     ;;
+                4)
+                    stop_ml_pipeline true  # Remove containers AND volumes
+                    ;;
             esac
             ;;
         restart)
@@ -371,6 +402,9 @@ main() {
                     ;;
                 3)
                     rebuild_feature_engineering
+                    ;;
+                4)
+                    rebuild_ml_pipeline
                     ;;
             esac
             ;;
@@ -392,6 +426,9 @@ main() {
                         ;;
                     3)
                         stop_feature_engineering true
+                        ;;
+                    4)
+                        stop_ml_pipeline true
                         ;;
                 esac
                 docker compose down -v --remove-orphans 2>/dev/null || true
@@ -418,6 +455,9 @@ main() {
             3)
                 show_feature_engineering_status
                 ;;
+            4)
+                show_ml_pipeline_status
+                ;;
         esac
     fi
 
@@ -435,6 +475,9 @@ main() {
                 ;;
             3)
                 run_feature_engineering_health_checks
+                ;;
+            4)
+                run_ml_pipeline_health_checks
                 ;;
         esac
     fi
@@ -466,6 +509,12 @@ main() {
                 echo ""
                 inspect_feature_store_outputs
                 ;;
+            4)
+                log_info "ML Pipeline Visualization"
+                quick_ml_pipeline_status
+                echo ""
+                inspect_ml_pipeline_outputs
+                ;;
         esac
     fi
 
@@ -483,6 +532,9 @@ main() {
                 ;;
             3)
                 show_feature_engineering_urls
+                ;;
+            4)
+                show_ml_pipeline_urls
                 ;;
         esac
     fi
@@ -537,6 +589,11 @@ main() {
                 python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" online
             fi
         fi
+    fi
+
+    if [ "$RUN_TRAINING" = true ]; then
+        echo ""
+        run_ml_training_job
     fi
 
     if [ "$SHOW_LOGS" = true ]; then
