@@ -45,7 +45,7 @@ check_feature_engineering_service() {
             "docker exec minio mc alias set myminio http://localhost:9000 minioadmin minioadmin >/dev/null 2>&1"
 
         run_feature_engineering_check "MinIO offline features present" \
-            "docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive | head -1" \
+            "docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive 2>/dev/null | head -1" \
             true
 
         run_feature_engineering_check "Redis feature keys available" \
@@ -53,8 +53,10 @@ check_feature_engineering_service() {
             true
 
         run_feature_engineering_check "Redis accessible for feature store" \
-            "docker exec redis redis-cli ping" \
-            false
+            "docker exec redis redis-cli ping"
+
+        run_feature_engineering_check "MinIO accessible for feature storage" \
+            "docker exec minio mc ls myminio/clinical-mlops/features/offline/ >/dev/null 2>&1"
     fi
 
     echo ""
@@ -89,7 +91,55 @@ run_feature_engineering_health_checks() {
     fi
 }
 
+# Quick status for visualization
+quick_feature_engineering_status() {
+    log_info "Quick Feature Engineering Status"
+    echo ""
+
+    for service in ${LEVEL_SERVICES[3]}; do
+        if check_service_running "$service"; then
+            echo -e "  ${GREEN}✓${NC} $service"
+        else
+            echo -e "  ${RED}✗${NC} $service"
+        fi
+    done
+
+    echo ""
+    local running=$(count_running_services 3)
+    local total=$(count_total_services 3)
+    echo "Status: $running/$total services running"
+    echo ""
+}
+
+# Inspect feature stores for visualize
+inspect_feature_store_outputs() {
+    log_info "Inspecting feature stores..."
+    echo ""
+
+    if check_service_running "minio"; then
+        docker exec minio mc alias set myminio http://localhost:9000 minioadmin minioadmin >/dev/null 2>&1 || true
+        local offline_count
+        offline_count=$(docker exec minio mc ls myminio/clinical-mlops/features/offline/ --recursive 2>/dev/null | wc -l || echo "0")
+        echo "  Offline features (MinIO): $offline_count files"
+    else
+        log_warning "MinIO not running - offline store unavailable"
+    fi
+
+    if check_service_running "redis"; then
+        local online_keys
+        online_keys=$(docker exec redis redis-cli --raw KEYS 'patient:*:features' 2>/dev/null | wc -l || echo "0")
+        echo "  Online features (Redis):  $online_keys keys"
+    else
+        log_warning "Redis not running - online store unavailable"
+    fi
+
+    echo ""
+    echo -e "${CYAN}Tip:${NC} Run ./scripts/feature-engineering/compare_stores.sh for detailed store comparison."
+}
+
 # Export functions
 export -f run_feature_engineering_health_checks
 export -f run_feature_engineering_check
 export -f check_feature_engineering_service
+export -f quick_feature_engineering_status
+export -f inspect_feature_store_outputs

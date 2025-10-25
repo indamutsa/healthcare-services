@@ -1,26 +1,67 @@
 {
-
   "name": "Ubuntu Dev Container",
   "image": "ubuntu:22.04",
-
   "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
-
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
     "source=${localEnv:HOME}/projects/personal-projects/scripts,target=/scripts,type=bind"
   ],
-
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
   "workspaceFolder": "/workspaces/clinical-trials-service",
-
-  "postCreateCommand": "apt-get update && apt-get install -y docker.io && /scripts/setup.sh ",
-
+  "postCreateCommand": "/scripts/setup.sh",
   "remoteUser": "root",
   "forwardPorts": [8080, 3000, 5173],
   "portsAttributes": {
     "8080": {
-      "label": "",
+      "label": "Main App",
       "onAutoForward": "openBrowser"
+    },
+    "3000": {
+      "label": "Frontend"
+    },
+    "5173": {
+      "label": "Vite Dev"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "hashicorp.terraform",
+        "ms-kubernetes-tools.vscode-kubernetes-tools"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
     }
   }
 }
+
+// {
+//   "name": "Ubuntu Dev Container",
+//   "image": "ubuntu:22.04",
+//   "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
+//   "mounts": [
+//     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
+//     "source=${localEnv:HOME}/projects/personal-projects/scripts,target=/scripts,type=bind"
+//   ],
+//   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
+//   "workspaceFolder": "/workspaces/clinical-trials-service",
+//   "postCreateCommand": "apt-get update -y && apt update -y && apt-get upgrade -y && apt upgrade -y && apt install apt-utils && apt-get install -y docker.io && /scripts/setup.sh ",
+//   "remoteUser": "root",
+//   "forwardPorts": [8080, 3000, 5173],
+//   "portsAttributes": {
+//     "8080": {
+//       "label": "",
+//       "onAutoForward": "openBrowser"
+//     }
+//   }
+// }
