@@ -133,7 +133,10 @@ ${CYAN}Available Levels:${NC}
   Level 2: Spark Master/Workers, Streaming, Batch Processing
   Level 3: Feature Engineering (Offline + Online stores)
   Level 4: MLflow, ML Training, Model Serving
-  Level 5: Airflow, Prometheus, Grafana, OpenSearch
+  Level 5: Airflow
+  Level 6: Prometheus, Grafana, OpenSearch
+  Level 7: ArgoCD, Github Actions, Istio Mesh, Kubernetes, Argo rollouts, DAST, SAST (blue and green deployments)
+  LEVEL 8: Penetration testing - metasploit and other tools... we leave in vulnerabilities to help us testing
 
 ${YELLOW}Note:${NC} Starting a level automatically starts its dependencies
 
@@ -333,6 +336,125 @@ parse_arguments() {
     fi
 }
 
+# --- Level Utilities ---
+
+resolve_level_hierarchy() {
+    local target="$1"
+    declare -A visited=()
+    local -a queue=("$target")
+    local -a collected=()
+
+    while [ "${#queue[@]}" -gt 0 ]; do
+        local current="${queue[0]}"
+        queue=("${queue[@]:1}")
+
+        if [[ -z "$current" ]]; then
+            continue
+        fi
+
+        if [[ -n "${visited[$current]}" ]]; then
+            continue
+        fi
+
+        visited[$current]=1
+        collected+=("$current")
+
+        local deps="${LEVEL_DEPENDENCIES[$current]:-}"
+        if [[ -n "$deps" ]]; then
+            for dep in $deps; do
+                queue+=("$dep")
+            done
+        fi
+    done
+
+    if [ "${#collected[@]}" -eq 0 ]; then
+        collected+=("$target")
+    fi
+
+    printf "%s\n" "${collected[@]}" | sort -n | uniq
+}
+
+run_summary_for_level() {
+    local level="$1"
+    case $level in
+        0) show_infrastructure_status ;;
+        1) show_data_ingestion_status ;;
+        2) show_data_processing_status ;;
+        3) show_feature_engineering_status ;;
+        4) show_ml_pipeline_status ;;
+        *)
+            log_warning "Summary not implemented for level $level yet"
+            ;;
+    esac
+}
+
+run_health_checks_for_level() {
+    local level="$1"
+    case $level in
+        0) run_infrastructure_health_checks ;;
+        1) run_data_ingestion_health_checks ;;
+        2) run_data_processing_health_checks ;;
+        3) run_feature_engineering_health_checks ;;
+        4) run_ml_pipeline_health_checks ;;
+        *)
+            log_warning "Health checks not implemented for level $level yet"
+            ;;
+    esac
+}
+
+run_visualization_for_level() {
+    local level="$1"
+    case $level in
+        0)
+            log_info "Infrastructure Visualization"
+            quick_infrastructure_status
+            echo ""
+            check_data_accessibility
+            ;;
+        1)
+            log_info "Data Ingestion Visualization"
+            quick_data_ingestion_status
+            echo ""
+            check_kafka_data_flow
+            ;;
+        2)
+            log_info "Data Processing Visualization"
+            quick_data_processing_status
+            echo ""
+            inspect_spark_outputs
+            ;;
+        3)
+            log_info "Feature Engineering Visualization"
+            quick_feature_engineering_status
+            echo ""
+            inspect_feature_store_outputs
+            ;;
+        4)
+            log_info "ML Pipeline Visualization"
+            quick_ml_pipeline_status
+            echo ""
+            inspect_ml_pipeline_outputs
+            ;;
+        *)
+            log_warning "Visualization not implemented for level $level yet"
+            ;;
+    esac
+}
+
+run_service_urls_for_level() {
+    local level="$1"
+    case $level in
+        0) show_service_urls ;;
+        1) show_data_ingestion_urls ;;
+        2) show_data_processing_urls ;;
+        3) show_feature_engineering_urls ;;
+        4) show_ml_pipeline_urls ;;
+        *)
+            log_warning "Service URLs not available for level $level yet"
+            ;;
+    esac
+}
+
 # --- Main Execution ---
 
 main() {
@@ -442,101 +564,54 @@ main() {
     # Execute information commands based on level
     if [ "$SHOW_SUMMARY" = true ]; then
         echo ""
-        case $TARGET_LEVEL in
-            0)
-                show_infrastructure_status
-                ;;
-            1)
-                show_data_ingestion_status
-                ;;
-            2)
-                show_data_processing_status
-                ;;
-            3)
-                show_feature_engineering_status
-                ;;
-            4)
-                show_ml_pipeline_status
-                ;;
-        esac
+        local summary_levels=()
+        mapfile -t summary_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+        local last_index=$((${#summary_levels[@]}-1))
+        for idx in "${!summary_levels[@]}"; do
+            run_summary_for_level "${summary_levels[$idx]}"
+            if [ "$idx" -lt "$last_index" ]; then
+                echo ""
+            fi
+        done
     fi
 
     if [ "$SHOW_HEALTH" = true ]; then
         echo ""
-        case $TARGET_LEVEL in
-            0)
-                run_infrastructure_health_checks
-                ;;
-            1)
-                run_data_ingestion_health_checks
-                ;;
-            2)
-                run_data_processing_health_checks
-                ;;
-            3)
-                run_feature_engineering_health_checks
-                ;;
-            4)
-                run_ml_pipeline_health_checks
-                ;;
-        esac
+        local health_levels=()
+        mapfile -t health_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+        local health_last=$((${#health_levels[@]}-1))
+        for idx in "${!health_levels[@]}"; do
+            run_health_checks_for_level "${health_levels[$idx]}"
+            if [ "$idx" -lt "$health_last" ]; then
+                echo ""
+            fi
+        done
     fi
 
     if [ "$VISUALIZE" = true ]; then
         echo ""
-        case $TARGET_LEVEL in
-            0)
-                log_info "Infrastructure Visualization"
-                quick_infrastructure_status
+        local visualization_levels=()
+        mapfile -t visualization_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+        local viz_last=$((${#visualization_levels[@]}-1))
+        for idx in "${!visualization_levels[@]}"; do
+            run_visualization_for_level "${visualization_levels[$idx]}"
+            if [ "$idx" -lt "$viz_last" ]; then
                 echo ""
-                check_data_accessibility
-                ;;
-            1)
-                log_info "Data Ingestion Visualization"
-                quick_data_ingestion_status
-                echo ""
-                check_kafka_data_flow
-                ;;
-            2)
-                log_info "Data Processing Visualization"
-                quick_data_processing_status
-                echo ""
-                inspect_spark_outputs
-                ;;
-            3)
-                log_info "Feature Engineering Visualization"
-                quick_feature_engineering_status
-                echo ""
-                inspect_feature_store_outputs
-                ;;
-            4)
-                log_info "ML Pipeline Visualization"
-                quick_ml_pipeline_status
-                echo ""
-                inspect_ml_pipeline_outputs
-                ;;
-        esac
+            fi
+        done
     fi
 
     if [ "$SHOW_OPEN" = true ]; then
         echo ""
-        case $TARGET_LEVEL in
-            0)
-                show_service_urls
-                ;;
-            1)
-                show_data_ingestion_urls
-                ;;
-            2)
-                show_data_processing_urls
-                ;;
-            3)
-                show_feature_engineering_urls
-                ;;
-            4)
-                show_ml_pipeline_urls
-                ;;
-        esac
+        local url_levels=()
+        mapfile -t url_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+        local url_last=$((${#url_levels[@]}-1))
+        for idx in "${!url_levels[@]}"; do
+            run_service_urls_for_level "${url_levels[$idx]}"
+            if [ "$idx" -lt "$url_last" ]; then
+                echo ""
+            fi
+        done
     fi
 
     if [ "$TARGET_LEVEL" -eq 3 ]; then
@@ -598,9 +673,21 @@ main() {
 
     if [ "$SHOW_LOGS" = true ]; then
         echo ""
-        local level_services="${LEVEL_SERVICES[$TARGET_LEVEL]}"
-        log_info "Following logs for Level $TARGET_LEVEL services..."
-        docker compose logs -f $level_services
+        local log_levels=()
+        mapfile -t log_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+        local services=()
+        for level in "${log_levels[@]}"; do
+            if [ -n "${LEVEL_SERVICES[$level]:-}" ]; then
+                services+=(${LEVEL_SERVICES[$level]})
+            fi
+        done
+
+        if [ "${#services[@]}" -eq 0 ]; then
+            log_warning "No services available for level(s): ${log_levels[*]}"
+        else
+            log_info "Following logs for Levels ${log_levels[*]}..."
+            docker compose logs -f "${services[@]}"
+        fi
     fi
 
     # Show next steps

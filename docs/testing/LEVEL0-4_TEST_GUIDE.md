@@ -129,7 +129,20 @@ Teardown: `./pipeline-manager.sh --stop --level 0` (removes volumes—infra only
    Tail logs: `docker logs -f ml-training`
 6. **Model Serving smoke test**
    ```bash
-   payload=$(python3 tests/helpers/sample_payload.py)   # or craft manually
+   payload=$(python3 - <<'PY'
+import json
+payload = {
+    "records": [{
+        "patient_id": "patient_002",
+        "features": {f"feature_{i}": float(i + 1) for i in range(109)},
+        "metadata": {"timestamp": "2024-01-15T10:30:00Z", "source": "clinical_trial_site_a"}
+    }],
+    "use_cache": True
+}
+print(json.dumps(payload))
+PY
+)
+
    curl -s -X POST http://localhost:8000/v1/predict \
      -H "Content-Type: application/json" \
      -d "$payload" | jq
@@ -138,6 +151,80 @@ Teardown: `./pipeline-manager.sh --stop --level 0` (removes volumes—infra only
 7. **Cache and registry checks**
    - `docker exec redis redis-cli --scan --pattern "model-serving:*" | head`
    - `docker exec mlflow-server curl -s http://localhost:5000/api/2.0/mlflow/registered-models/list | jq`
+
+8. **Comprehensive End-to-End Pipeline Verification**
+   
+   **Goal:** Verify complete data flow from clinical data generation through feature engineering to model predictions.
+   
+   **Step 1: Verify Data Generation & Kafka Flow**
+   ```bash
+   # Check Kafka topics
+   docker exec kafka kafka-topics --list --bootstrap-server localhost:9092 | grep -E "(clinical|patient|adverse)"
+   
+   # Verify data is flowing
+   docker exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic patient-vitals --max-messages 2 --from-beginning
+   ```
+   
+   **Step 2: Verify Feature Engineering**
+   ```bash
+   # Check feature-engineering service
+   docker-compose up -d feature-engineering
+   docker logs feature-engineering --tail 50 | grep -A 10 -B 5 "PIPELINE COMPLETE"
+   
+   # Verify online feature store (Redis)
+   docker exec redis redis-cli KEYS "patient:*:features" | head -10
+   docker exec redis redis-cli HGETALL "patient:PT00677:features" | head -20
+   ```
+   
+   **Step 3: Verify Model Serving with Real Features**
+   ```bash
+   # Test with realistic clinical features
+   cat > /tmp/test_real_prediction.json << 'EOF'
+   {
+     "records": [{
+       "patient_id": "patient_001",
+       "timestamp": "2025-10-25T12:00:00Z",
+       "features": {
+         "age": 45.0, "heart_rate": 72.0, "blood_pressure_systolic": 120.0,
+         "blood_pressure_diastolic": 80.0, "temperature": 98.6, "spo2": 98.0,
+         "bmi": 24.5, "glucose": 95.0, "cholesterol": 180.0
+       },
+       "metadata": {"clinical_trial": "phase_3_study_a", "site_id": "site_001"}
+     }],
+     "use_cache": true
+   }
+   EOF
+   
+   curl -X POST -H "Content-Type: application/json" -d @/tmp/test_real_prediction.json http://localhost:8000/v1/predict | jq
+   ```
+   
+   **Step 4: Verify Batch Predictions & Caching**
+   ```bash
+   # Test batch predictions with multiple records
+   cat > /tmp/test_batch_predictions.json << 'EOF'
+   {
+     "records": [
+       {
+         "patient_id": "batch_test_1",
+         "features": {f"feature_{i}": 0.1 * (i + 1) for i in range(109)}
+       },
+       {
+         "patient_id": "batch_test_2", 
+         "features": {f"feature_{i}": 0.9 - (0.1 * i) for i in range(109)}
+       }
+     ],
+     "use_cache": true
+   }
+   EOF
+   
+   curl -X POST -H "Content-Type: application/json" -d @/tmp/test_batch_predictions.json http://localhost:8000/v1/predict | jq
+   ```
+   
+   **Expected Results:**
+   - ✅ Different probabilities for different feature sets (model is working)
+   - ✅ `"cached": true` on repeated requests
+   - ✅ Online feature store populated with patient data
+   - ✅ Real-time data flowing through Kafka topics
 
 Teardown (if required):
 - Stop ML layer only: `./pipeline-manager.sh --stop --level 4`
@@ -169,4 +256,3 @@ Once Levels 0–4 are verified:
 - Integrate automated tests (pytest) for `applications/ml-training` data loader exclusions.
 - Add integration tests for `applications/model-serving` cache miss/hit behaviour.
 - Prepare Level 5 (Airflow) validation once orchestration services are available.
-

@@ -1,494 +1,194 @@
-# Healthcare Clinical Trials Platform
+# Clinical Trials MLOps Platform
 
-A comprehensive clinical trials data processing system built with **IBM MQ**, **Spring Boot**, and **microservices architecture** for healthcare environments.
+Modern level-based Clinical MLOps environment for managing clinical trial data from ingestion through model serving and observability. The stack combines real-time messaging, distributed processing, feature engineering, ML training, inference, and operational tooling—each grouped into hierarchical levels that can be started, tested, and iterated independently.
 
-## Architecture Overview
+## Table of Contents
+- [Platform Overview](#platform-overview)
+- [Level-Based Architecture](#level-based-architecture)
+- [Data Flow](#data-flow)
+- [Getting Started](#getting-started)
+- [Managing the Pipeline](#managing-the-pipeline)
+- [Operational Dashboards](#operational-dashboards)
+- [Testing and Validation](#testing-and-validation)
+- [Developer Toolkit](#developer-toolkit)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
 
-This platform processes clinical trial data through a **message-driven architecture**:
+## Platform Overview
+The platform orchestrates clinical trial data through resilient services and storage layers backed by Docker Compose. Levels build on each other—starting a higher level automatically includes all dependencies below it. This makes it easy to iterate on a single capability (e.g., feature engineering) without hand-managing the entire stack.
 
-```
-Clinical Trial Sites → REST API → Spring JMS → IBM MQ → Lab Processor → EMR/Audit
-```
+Key foundations:
+- Container-native workflow with Docker Compose profiles
+- Hierarchical orchestration via `pipeline-manager.sh`
+- Consistent data lifecycle across raw, processed, feature, and prediction layers
+- Real services only—no mocks or placeholders
 
-**Core Components:**
-- **Clinical Data Gateway** (Port 8080): Receives and validates clinical trial data via REST API
-- **Lab Results Processor** (Port 8081): Processes lab results, updates EMR systems, and handles audit logging
-- **IBM MQ**: Message broker for reliable clinical data transmission
-- **Monitoring Stack**: Prometheus, Grafana, ELK for system observability
+## Level-Based Architecture
 
-## Quick Start (Container-Based Development)
+| Level | Name | Key Services | Compose Profile | Status |
+| ----- | ---- | ------------ | ---------------- | ------ |
+| 0 | Infrastructure | MinIO, PostgreSQL (mlflow/airflow), Redis, Kafka, Zookeeper, Kafka UI, Redis Insight | *(base)* | Implemented |
+| 1 | Data Ingestion | Kafka producer/consumer, IBM MQ bridge, Clinical Data Gateway, Lab Results Processor | `data-ingestion` | Implemented |
+| 2 | Data Processing | Spark master/worker, streaming and batch jobs | `data-processing` | Implemented |
+| 3 | Feature Engineering | Feature engineering service, offline (MinIO) + online (Redis) feature stores, comparison utilities | `features` | Implemented |
+| 4 | ML Pipeline | MLflow tracking server, training jobs, model serving API with Redis cache | `ml-pipeline` | Implemented |
+| 5 | Orchestration | Airflow scheduler, webserver, workers | `orchestration` | In Progress |
+| 6 | Observability | Prometheus, Grafana, OpenSearch Dashboards, Data Prepper, Filebeat | `observability` | Planned |
+| 7 | Platform Engineering | ArgoCD, GitHub Actions runners, Istio mesh, Kubernetes, Argo Rollouts, DAST/SAST tooling | `platform` | Planned |
+| 8 | Security Testing | Metasploit, active penetration testing harness | `security` | Planned |
 
-### 1. Setup Development Environment
+> Levels 0-4 are production-ready today. Higher levels are tracked in the roadmap and will use the same hierarchical management model once delivered.
+
+## Data Flow
+1. **Clinical Site Intake** – REST API receives validated payloads, pushes messages into IBM MQ and Kafka.
+2. **Streaming Ingestion (Level 1)** – Producers and consumers populate Bronze storage in MinIO; events remain immutable.
+3. **Processing (Level 2)** – Spark streaming and batch jobs cleanse, deduplicate, standardize, and publish Silver parquet datasets.
+4. **Feature Engineering (Level 3)** – Pipelines derive 120+ temporal and contextual features, persisting to both offline parquet (MinIO) and online Redis structures.
+5. **ML Pipeline (Level 4)** – Training jobs load latest offline partitions, log experiments to MLflow, and promote models. Model-serving exposes `/v1/predict` with Redis-backed caching and MLflow registry integration.
+6. **Observability & Orchestration** – Upcoming levels extend automation, dashboards, and continuous delivery.
+
+## Getting Started
+
+### Prerequisites
+- Docker 24+
+- Docker Compose v2
+- Python 3.11+ (for local utilities)
+- `jq` and `curl` for API validation
+
+### Environment Setup
 ```bash
-# Open VS Code with Alpine container (clean machine approach)
-# Run terminal enhancement
-chmod +x enhance-terminal.sh
+# Optional helpers (improves terminal + installs dependencies)
+chmod +x enhance-terminal.sh alpine-setup.sh
 ./enhance-terminal.sh
-
-# Setup complete development environment
-chmod +x alpine-setup.sh
 ./alpine-setup.sh
+
+# Ensure the manager script is executable
+chmod +x pipeline-manager.sh
 ```
 
-### 2. Start the Platform
+### First Run
 ```bash
-# Activate development environment
-source .pyenv/bin/activate
+# Start core infrastructure (MinIO, Postgres, Redis, Kafka…)
+./pipeline-manager.sh --start --level 0
 
-# Start IBM MQ container
-docker compose up -d
+# Check status and summary output
+./pipeline-manager.sh --summary --level 0
 
-# Build and run Clinical Data Gateway
-cd applications/clinical-data-gateway
-mvn clean package
-java -jar target/clinical-data-gateway-1.0.0.jar
-
-# Generate test clinical data (new terminal)
-python operations/scripts/demo/clinical_data_generator.py --count 10 --interval 2-5
+# Bring up the entire ML pipeline stack (levels 0-4)
+./pipeline-manager.sh --start --level 4
 ```
 
-### 3. Verify the Demo
+## Managing the Pipeline
+`pipeline-manager.sh` is the orchestration entrypoint. It understands combined short flags, hierarchical level selection, and feature-engineering utilities.
+
+### Management Commands (Mutually Exclusive)
+- `--start` – `docker compose up -d` for the selected level and dependencies
+- `--stop` – `docker compose down -v` (volumes removed for the targeted levels)
+- `--restart-rebuild` – Stop, rebuild images without cache, start again
+- `--clean` – Full cleanup (removes images and orphaned resources)
+
+### Information Commands (Composable: e.g., `-vhso`)
+- `-v`/`--visualize` – High-level topology diagrams
+- `-h`/`--health-check` – Aggregated health probes per level
+- `-l`/`--logs` – Tail service logs
+- `-o`/`--open` – Print service URLs
+- `-s`/`--summary` – Counts and status per level
+- `-d`/`--demo-data` – Show sample payloads and generators
+
+### Level Selection
+- `--level <0-8>` – Target level (includes all lower dependencies)
+- `--level all` – Entire stack
+
+### Level 3 Feature Store Utilities
+- `--compare-stores [DATE]` – Offline vs online feature parity
+- `--inspect-feature-volume [NAME]` – Volume introspection
+- `--monitor-feature-pipeline [DATE]` – End-to-end pipeline monitor
+- `--query-offline-features [DATE]` – Inspect parquet partitions
+- `--query-online-features [PATIENT]` – Fetch Redis feature payloads
+
+> Feature utilities require `--level 3` or higher. The script enforces the constraint automatically.
+
+### Example Workflows
 ```bash
-# Test gateway health
-curl http://localhost:8080/api/clinical/health
+# Start infrastructure + ingestion
+./pipeline-manager.sh --start --level 1
 
-# View processing statistics
-curl http://localhost:8080/api/clinical/stats
+# Monitor Spark processing with health + logs
+./pipeline-manager.sh --health-check --logs --level 2
+
+# Run the ML pipeline with feature checks
+./pipeline-manager.sh --start -h -o --level 4
+./pipeline-manager.sh --compare-stores --level 3
+
+# Tear down Levels 2-4 but keep infrastructure running
+./pipeline-manager.sh --stop --level 4
+
+# Full clean reset
+./pipeline-manager.sh --clean --level all
 ```
 
-## Project Structure
+## Operational Dashboards
+| Service | URL | Level | Notes |
+| ------- | --- | ----- | ----- |
+| MinIO Console | http://localhost:9001 | 0 | `minioadmin` / `minioadmin` |
+| Kafka UI | http://localhost:8090 | 0 | Inspect topics and consumers |
+| Redis Insight | http://localhost:5540 | 0 | Online feature debugging |
+| Spark Master | http://localhost:8080 | 2 | Streaming and batch monitoring |
+| Model Serving API | http://localhost:8000 | 4 | `/health`, `/ready`, `/v1/predict` |
+| MLflow Tracking UI | http://localhost:5000 | 4 | Experiments and model registry |
+| Airflow Webserver | http://localhost:8081 | 5 | *(coming soon)* |
+| Prometheus | http://localhost:9090 | 6 | *(planned)* |
+| Grafana | http://localhost:3000 | 6 | *(planned)* |
+| OpenSearch Dashboards | http://localhost:5601 | 6 | *(planned)* |
 
+## Testing and Validation
+- **Smoke Tests:** each management command prints summary, health checks, and active containers. Start with `./pipeline-manager.sh -s -h --level 4`.
+- **End-to-End Guide:** `docs/testing/LEVEL0-4_TEST_GUIDE.md` walks through validation for services, data layers, and API endpoints.
+- **Model Serving Verification:** Exercise `/v1/predict` with representative payloads. Caching behavior can be confirmed via repeated calls (`"cached": true`).
+- **Data Store Inspection:** Use the auxiliary commands (MinIO client, Spark SQL, Redis Insight) outlined in the testing guide.
+
+## Developer Toolkit
 ```
 clinical-trials-service/
-├── .devcontainer/              # VS Code container configuration
-├── applications/               # Spring Boot microservices
-│   ├── clinical-data-gateway/  # REST API & JMS producer
-│   └── lab-results-processor/  # JMS consumer & data processor
-├── operations/                 # Demo scripts and automation
-│   └── scripts/demo/          # Clinical data generator
-├── infrastructure/             # IBM MQ Docker configuration  
-├── monitoring/                 # Prometheus, Grafana, ELK stack
-├── config/                     # Environment configurations
-├── docs/                       # API and architecture documentation
-├── test-data/                  # Sample clinical data for testing
-└── scripts/                    # Build and deployment utilities
+├── pipeline-manager.sh         # Level-based orchestration
+├── docker-compose.yml          # Service definitions + profiles
+├── applications/               # Microservices, training, serving
+├── scripts/                    # Common utilities (compose helpers, health probes)
+├── docs/                       # Architecture, testing, runbooks
+│   └── testing/LEVEL0-4_TEST_GUIDE.md
+├── data/                       # Local artifacts, parquet staging
+├── operations/                 # Demo generators and automation
+└── orchestration/              # Airflow DAGs (WIP)
 ```
 
-## Clinical Data Types
-
-The system processes four types of clinical data:
-
-1. **Patient Demographics** (15%): Age, gender, weight, height, study enrollment
-2. **Vital Signs** (40%): Blood pressure, heart rate, temperature, oxygen saturation
-3. **Lab Results** (30%): Blood glucose, cholesterol, hemoglobin, liver enzymes
-4. **Adverse Events** (15%): Side effects, severity, relation to study drug
-
-## Development Workflow
-
-### Container-First Approach
-This project uses **containerized development** to avoid installing tools locally:
-
+### Frequently Used Commands
 ```bash
-# 1. VS Code + Alpine container (clean slate)
-# 2. Enhanced terminal (ZSH + autosuggestions)  
-# 3. Complete toolchain (Java 17, Maven, Python, Docker)
-# 4. Ready for demo in minutes
+# Build project-specific images
+docker compose build
+
+# Lint Python applications
+ruff check applications/model-serving
+
+# Run training job on demand
+docker compose --profile ml-pipeline run --rm ml-training python train.py
+
+# Inspect latest feature parquet partition (inside Spark container)
+docker compose --profile data-processing exec spark-batch spark-sql \
+  -e "SELECT COUNT(*), date FROM features_offline GROUP BY date ORDER BY date DESC LIMIT 5;"
 ```
 
-### Build & Test
-```bash
-# Build all services
-./scripts/build-all.sh
+## Roadmap
+- **Level 5 (Airflow):** finalize DAGs for ingestion → processing → feature sync, add Airflow health checks to the manager.
+- **Level 6 (Observability):** integrate Prometheus exporters, Grafana dashboards, OpenSearch pipeline.
+- **Level 7 (Platform):** codify GitOps workflows, service mesh experiments, progressive delivery with Argo Rollouts.
+- **Level 8 (Security):** staged vulnerability injection, automated penetration scenarios, blue/green validation.
 
-# Run integration tests
-./scripts/test-complete-flow.sh
-
-# Clean build artifacts
-./scripts/clean-all.sh
-```
-
-## Technology Stack
-
-**Backend:**
-- **Java 17** with Spring Boot 3.2
-- **Spring JMS** for message processing
-- **IBM MQ** for reliable messaging
-- **Maven** for build management
-
-**Data Generation:**
-- **Python 3** with realistic clinical data
-- **Faker** for generating HIPAA-compliant test data
-- **REST client** for API integration
-
-**Infrastructure:**
-- **Docker Compose** for local development
-- **Alpine Linux** for lightweight containers
-- **ZSH** with enhanced terminal experience
-
-## HIPAA Compliance Features
-
-- **Anonymized Patient IDs**: Format `PT12AB34CD` (no real identifiers)
-- **Medical Validation**: Realistic ranges for vitals, labs, and adverse events
-- **Audit Trails**: Complete message tracking through the pipeline
-- **Secure Transmission**: IBM MQ with persistent message delivery
-- **Data Retention**: 7-year retention policy for regulatory compliance
-
-## Monitoring & Observability
-
-- **Health Checks**: `/api/clinical/health` endpoint
-- **Metrics**: Processing statistics and success rates
-- **Logging**: Structured logs for debugging and compliance
-- **Message Tracking**: Unique message IDs through entire pipeline
-
-```bash
-# Access monitoring dashboards
-Grafana:    http://localhost:3000
-Prometheus: http://localhost:9090
-Kibana:     http://localhost:5601
-```
-
-## Interview Demo Flow
-
-This platform demonstrates several key concepts:
-
-1. **Microservices Architecture**: Loosely coupled services with clear boundaries
-2. **Message-Driven Design**: Asynchronous processing with IBM MQ
-3. **Domain Modeling**: Healthcare entities with proper validation
-4. **Container Development**: Complete environment without local installations
-5. **Production Readiness**: Monitoring, logging, and error handling
-
-### Demo Script
-```bash
-# Terminal 1: Start gateway
-java -jar applications/clinical-data-gateway/target/clinical-data-gateway-1.0.0.jar
-
-# Terminal 2: Generate data  
-python operations/scripts/demo/clinical_data_generator.py --verbose
-
-# Terminal 3: Monitor
-curl -s http://localhost:8080/api/clinical/stats | jq
-```
-
-## API Documentation
-
-### POST /api/clinical/data
-Receives clinical trial data from healthcare sites.
-
-**Example Payload:**
-```json
-{
-  "message_id": "550e8400-e29b-41d4-a716-446655440000",
-  "timestamp": "2025-09-08T14:30:45.123456",
-  "study_phase": "Phase II",
-  "site_id": "SITE001",
-  "vital_signs": {
-    "patient_id": "PT12AB34CD",
-    "systolic_bp": 128,
-    "diastolic_bp": 82,
-    "heart_rate": 74,
-    "temperature_celsius": 37.1
-  }
-}
-```
+Progress is tracked in the issue board. Contributions and design discussions are welcome—see the next section for guidelines.
 
 ## Contributing
+1. Fork the repository and branch off `main`.
+2. Run `./pipeline-manager.sh --start --level 4` to ensure the ML pipeline works with your changes.
+3. Add tests or update `docs/testing/LEVEL0-4_TEST_GUIDE.md` when behavior changes.
+4. Open a pull request with a concise description, screenshots/logs if relevant, and verification steps.
 
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
-3. **Commit** changes: `git commit -m 'Add amazing feature'`
-4. **Push** to branch: `git push origin feature/amazing-feature`
-5. **Open** a Pull Request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-🏥
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         CLINICAL MLOPS DATA PIPELINE                         │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────┐
-│  1. STREAMING INGESTION (Real-time events)                  │
-├─────────────────────────────────────────────────────────────┤
-│  Kafka Producer → Kafka Topics → Kafka Consumer             │
-│  ↓                                                           │
-│  MinIO Bronze Layer (raw/topic/date=YYYY-MM-DD/hour=HH/)   │
-│  Format: JSON (newline-delimited)                           │
-│  Purpose: Immutable raw event capture                       │
-│  Retention: 90 days                                         │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  2. DATA PROCESSING (Clean & validate)                      │
-├─────────────────────────────────────────────────────────────┤
-│  Spark Jobs (Bronze → Silver transformation)                │
-│  ↓                                                           │
-│  MinIO Silver Layer (processed/topic/date=YYYY-MM-DD/)     │
-│  Format: Parquet (compressed, columnar)                     │
-│  Purpose: ML-ready, deduplicated, validated data            │
-│  Retention: 2 years                                         │
-│                                                              │
-│  Transformations:                                            │
-│  • Deduplication (patient_id, timestamp, source)            │
-│  • Validation (physiological ranges)                        │
-│  • Standardization (units, formats)                         │
-│  • Enrichment (derived metrics)                             │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  3. FEATURE ENGINEERING (Create ML features)                │
-├─────────────────────────────────────────────────────────────┤
-│  Feature Engineering Pipeline (Spark/Python)                │
-│  ↓                                                           │
-│  Creates 120+ features:                                     │
-│  • Temporal: rolling windows (1h, 6h, 24h)                 │
-│  • Derived: pulse pressure, MAP, trends                     │
-│  • Aggregations: patient-level statistics                   │
-│  • Context: demographics, trial arm                         │
-│                                                              │
-│  Writes to DUAL STORAGE:                                    │
-│                                                              │
-│  ┌──────────────────────────────────────────────┐          │
-│  │  OFFLINE FEATURE STORE                       │          │
-│  │  (Historical training & batch scoring)       │          │
-│  ├──────────────────────────────────────────────┤          │
-│  │  Storage: MinIO (S3)                         │          │
-│  │  Location: features/offline/date=YYYY-MM-DD/ │          │
-│  │  Format: Parquet (partitioned by date)       │          │
-│  │  Schema:                                      │          │
-│  │    - patient_id                               │          │
-│  │    - timestamp                                │          │
-│  │    - feature_1...feature_120                  │          │
-│  │    - label (adverse_event_24h)                │          │
-│  │                                                │          │
-│  │  Use Cases:                                   │          │
-│  │  ✓ Model training (large batch reads)        │          │
-│  │  ✓ Batch predictions (daily scoring)         │          │
-│  │  ✓ Feature backfilling                        │          │
-│  │  ✓ Historical analysis                        │          │
-│  │  ✓ DVC versioning                             │          │
-│  │                                                │          │
-│  │  Access Pattern: Scan by date range           │          │
-│  │  Retention: 2 years                           │          │
-│  └──────────────────────────────────────────────┘          │
-│                                                              │
-│  ┌──────────────────────────────────────────────┐          │
-│  │  ONLINE FEATURE STORE                        │          │
-│  │  (Real-time predictions < 200ms)             │          │
-│  ├──────────────────────────────────────────────┤          │
-│  │  Storage: Redis (in-memory key-value)        │          │
-│  │  Key Pattern: patient:{patient_id}:features  │          │
-│  │  Value: JSON/Hash with latest features       │          │
-│  │  TTL: 48 hours (rolling window)              │          │
-│  │                                                │          │
-│  │  Example Entry:                               │          │
-│  │  Key: "patient:PT00042:features"             │          │
-│  │  Value: {                                     │          │
-│  │    "updated_at": "2025-10-07T16:30:00Z",     │          │
-│  │    "heart_rate_mean_1h": 78.5,               │          │
-│  │    "heart_rate_std_24h": 12.3,               │          │
-│  │    "bp_systolic_trend_6h": 2.1,              │          │
-│  │    ...120 features...                         │          │
-│  │  }                                             │          │
-│  │                                                │          │
-│  │  Use Cases:                                   │          │
-│  │  ✓ Real-time predictions (API serving)       │          │
-│  │  ✓ Fast feature lookup (< 10ms)              │          │
-│  │  ✓ Incremental updates                        │          │
-│  │                                                │          │
-│  │  Access Pattern: Point lookup by patient_id   │          │
-│  └──────────────────────────────────────────────┘          │
-│                                                              │
-│  Sync Strategy:                                             │
-│  • Batch job (hourly): Silver → Offline → Online           │
-│  • Stream processing: Real-time updates to Online           │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  4. MODEL TRAINING (PyTorch)                                │
-├─────────────────────────────────────────────────────────────┤
-│  Training Pipeline reads from OFFLINE FEATURE STORE         │
-│  ↓                                                           │
-│  Load Parquet files from MinIO (last 90 days)              │
-│  • Train/Val/Test split (70/15/15)                         │
-│  • PyTorch DataLoader                                       │
-│  • Track with MLflow                                        │
-│                                                              │
-│  ┌──────────────────────────────────────────────┐          │
-│  │  ML METADATA STORE                            │          │
-│  │  (Experiment tracking & model registry)      │          │
-│  ├──────────────────────────────────────────────┤          │
-│  │  Storage: PostgreSQL (mlflow)                │          │
-│  │  Tables:                                      │          │
-│  │    - experiments                              │          │
-│  │    - runs                                     │          │
-│  │    - params (learning_rate, epochs, ...)     │          │
-│  │    - metrics (train_loss, val_auroc, ...)    │          │
-│  │    - tags (git_commit, data_version, ...)    │          │
-│  │    - registered_models                        │          │
-│  │    - model_versions (staging, production)    │          │
-│  │                                                │          │
-│  │  Artifacts stored in MinIO:                   │          │
-│  │    - Model weights (.pth)                     │          │
-│  │    - Preprocessing (scaler.pkl)               │          │
-│  │    - Confusion matrices                       │          │
-│  │    - Feature importance plots                 │          │
-│  └──────────────────────────────────────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  5. MODEL SERVING (FastAPI)                                 │
-├─────────────────────────────────────────────────────────────┤
-│  API Endpoint: POST /predict                                │
-│  Request: {"patient_id": "PT00042"}                        │
-│  ↓                                                           │
-│  Step 1: Fetch features from ONLINE FEATURE STORE (Redis)  │
-│    redis.get("patient:PT00042:features")                   │
-│    Latency: < 10ms                                          │
-│  ↓                                                           │
-│  Step 2: Load model from MLflow Registry                    │
-│    model = mlflow.pytorch.load_model("production")         │
-│  ↓                                                           │
-│  Step 3: Run inference                                      │
-│    prediction = model.predict(features)                     │
-│  ↓                                                           │
-│  Step 4: Log prediction to PostgreSQL                       │
-│                                                              │
-│  ┌──────────────────────────────────────────────┐          │
-│  │  PREDICTION LOGS (Audit & monitoring)        │          │
-│  │  Storage: PostgreSQL (predictions)           │          │
-│  ├──────────────────────────────────────────────┤          │
-│  │  Table: predictions                           │          │
-│  │    - id (UUID)                                │          │
-│  │    - patient_id                               │          │
-│  │    - timestamp                                │          │
-│  │    - prediction_score (0.0-1.0)              │          │
-│  │    - risk_level (LOW/MEDIUM/HIGH)            │          │
-│  │    - model_version                            │          │
-│  │    - latency_ms                               │          │
-│  │    - features_used (JSONB)                    │          │
-│  │                                                │          │
-│  │  Indexes:                                     │          │
-│  │    - (patient_id, timestamp)                  │          │
-│  │    - (timestamp) for drift monitoring         │          │
-│  │                                                │          │
-│  │  Use Cases:                                   │          │
-│  │  ✓ Audit trail (regulatory compliance)       │          │
-│  │  ✓ Drift detection (compare predictions)     │          │
-│  │  ✓ Performance monitoring                     │          │
-│  │  ✓ Ground truth labeling (when event occurs) │          │
-│  └──────────────────────────────────────────────┘          │
-│                                                              │
-│  Response: {                                                │
-│    "patient_id": "PT00042",                                │
-│    "adverse_event_probability": 0.73,                      │
-│    "risk_level": "HIGH",                                   │
-│    "model_version": "v2.3.1"                               │
-│  }                                                          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  6. MONITORING & DRIFT DETECTION                            │
-├─────────────────────────────────────────────────────────────┤
-│  Monitoring Service (Python)                                │
-│  ↓                                                           │
-│  Queries PostgreSQL predictions table:                      │
-│  • Calculate rolling 7-day AUROC                           │
-│  • Compare prediction distribution vs training             │
-│  • Detect feature drift (KS test)                          │
-│  • Alert on performance degradation                         │
-│  ↓                                                           │
-│  Metrics sent to Prometheus → Grafana dashboards           │
-│                                                              │
-│  If AUROC < 0.80 → Trigger retraining                      │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│  7. ORCHESTRATION (Airflow)                                 │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────┐          │
-│  │  WORKFLOW METADATA STORE                      │          │
-│  │  Storage: PostgreSQL (airflow)               │          │
-│  ├──────────────────────────────────────────────┤          │
-│  │  Tables:                                      │          │
-│  │    - dag                                      │          │
-│  │    - dag_run                                  │          │
-│  │    - task_instance                            │          │
-│  │    - xcom (inter-task data passing)           │          │
-│  │                                                │          │
-│  │  DAGs:                                        │          │
-│  │  • data_processing_dag (hourly)               │          │
-│  │    - Spark: Bronze → Silver                   │          │
-│  │                                                │          │
-│  │  • feature_engineering_dag (hourly)           │          │
-│  │    - Read Silver Parquet                      │          │
-│  │    - Compute features                         │          │
-│  │    - Write to Offline (MinIO)                 │          │
-│  │    - Update Online (Redis)                    │          │
-│  │                                                │          │
-│  │  • model_monitoring_dag (6-hourly)            │          │
-│  │    - Check AUROC                              │          │
-│  │    - Detect drift                             │          │
-│  │    - Alert if needed                          │          │
-│  │                                                │          │
-│  │  • model_retraining_dag (triggered)           │          │
-│  │    - Load from Offline Feature Store          │          │
-│  │    - Train new model                          │          │
-│  │    - Evaluate & promote                       │          │
-│  └──────────────────────────────────────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-
-
-📊 What It Does
-The script checks all 6 levels of your pipeline:
-Level 0: Infrastructure
-
-✅ MinIO server accessible
-✅ MinIO bucket exists
-✅ Kafka broker accessible
-✅ Redis server accessible
-✅ MLflow server accessible
-✅ PostgreSQL databases accessible
-
-Level 1: Data Ingestion
-
-✅ Kafka producer running
-✅ Kafka consumer running
-✅ Kafka topics exist
-✅ Bronze data exists
-
-Level 2: Data Processing
-
-✅ Spark master/worker running
-✅ Spark accessible
-✅ Silver data exists
-
-Level 3: Feature Engineering
-
-✅ Feature engineering service running
-✅ Offline features exist (MinIO)
-✅ Online features exist (Redis)
-
-Level 4: ML Pipeline
-
-✅ Model serving API running
-✅ Health endpoint accessible
-
-Level 5: Observability
-
-✅ Prometheus running
-✅ Grafana running
-✅ Services accessible
-
-Data Flow Validation
-
-📊 Counts files in Bronze layer
-📊 Counts files in Silver layer
-📊 Counts files in Feature store
-
-```sh
-# Use MinIO client to browse entire bucket
-docker exec -it minio sh -c "mc alias set local http://localhost:9000 minioadmin minioadmin && mc ls --recursive local/clinical-mlops/"
-```
+The platform targets HIPAA-aligned workflows: anonymized identifiers, audit-ready logging, strong validation, and transport security. Please keep these standards in mind when contributing new features.
