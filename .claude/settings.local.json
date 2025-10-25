@@ -7,7 +7,9 @@
       "Bash(docker-compose stop:*)",
       "Bash(docker-compose rm:*)",
       "Bash(docker-compose up:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(./pipeline-manager.sh:*)",
+      "Bash(docker ps:*)"
     ],
     "deny": [],
     "ask": []

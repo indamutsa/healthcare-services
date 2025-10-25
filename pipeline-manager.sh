@@ -8,6 +8,7 @@ set -e
 
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FEATURE_ENGINEERING_DIR="${SCRIPT_DIR}/scripts/feature-engineering"
 
 # Source common utilities
 source "${SCRIPT_DIR}/scripts/common/config.sh"
@@ -35,10 +36,21 @@ SHOW_SUMMARY=false
 SHOW_OPEN=false
 SHOW_STATS=false
 VISUALIZE=false
+RUN_COMPARE_STORES=false
+COMPARE_STORES_DATE=""
+RUN_INSPECT_VOLUME=false
+FEATURE_VOLUME_NAME=""
+RUN_MONITOR_PIPELINE=false
+MONITOR_PROCESS_DATE=""
+RUN_QUERY_OFFLINE=false
+QUERY_OFFLINE_DATE=""
+RUN_QUERY_ONLINE=false
+QUERY_ONLINE_PATIENT=""
 
 # Show usage
 show_usage() {
-    cat << EOF
+    local usage
+    usage=$(cat << EOF
 ${CYAN}Clinical MLOps Pipeline Manager${NC}
 
 ${GREEN}Usage:${NC}
@@ -69,21 +81,34 @@ ${GREEN}Information Commands (Can be combined):${NC}
   -d, --stats           Show data statistics (Level 1+)
   -v, --visualize       Show visualization
 
-${GREEN}Examples:${NC}
-  # Start infrastructure (Level 0)
-  $0 --start --level 0
+${GREEN}Feature Engineering Utilities (--level 3 only):${NC}
+  --compare-stores [DATE]          Compare offline (MinIO) vs online (Redis) feature stores
+  --inspect-feature-volume [NAME]  Inspect the feature store Docker volume
+  --monitor-feature-pipeline [DATE]  Run end-to-end feature pipeline monitor
+  --query-offline-features [DATE]  Explore offline feature Parquet data
+  --query-online-features [PATIENT] Inspect a patient's online features from Redis
 
-  # Start data ingestion with health checks (Level 1)
-  $0 --start --level 1 -h
+${GREEN}Level-Specific Commands:${NC}
+  Level 0 - Infrastructure
+    $0 --start --level 0             Start core infrastructure stack
+    $0 -vh --level 0                 Visualize and run health checks
+    $0 --stop --level 0              Stop infrastructure only
 
-  # Show Level 1 status and statistics
-  $0 -sd --level 1
+  Level 1 - Data Ingestion
+    $0 --start -h --level 1          Start ingestion services with health checks
+    $0 -sd --level 1                 Show status plus ingestion statistics
+    $0 --restart-rebuild --level 1   Rebuild gateway, MQ, and processors
 
-  # Stop Level 1 services
-  $0 --stop --level 1
+  Level 2 - Data Processing
+    $0 --start --level 2             Launch Spark batch + streaming jobs (auto-starts 0-1)
+    $0 -vhs --level 2                Visualize, run health checks, and summary
+    $0 --stop --level 2              Cascade stop for processing + lower levels
 
-  # Rebuild Level 0
-  $0 --restart-rebuild --level 0
+  Level 3 - Feature Engineering
+    $0 --start --level 3             Start feature engineering with dependencies
+    $0 --compare-stores --level 3    Compare offline vs online feature stores
+    $0 --monitor-feature-pipeline 2025-10-25 --level 3  Monitor pipeline for a specific date
+    $0 --query-online-features PT00042 --level 3        Inspect online features for a patient
 
 ${YELLOW}Command Rules:${NC}
   • Only ONE management command per execution
@@ -101,6 +126,8 @@ ${CYAN}Available Levels:${NC}
 ${YELLOW}Note:${NC} Starting a level automatically starts its dependencies
 
 EOF
+)
+    printf "%b" "$usage"
 }
 
 # Parse arguments
@@ -152,6 +179,76 @@ parse_arguments() {
                 VISUALIZE=true
                 shift
                 ;;
+            --compare-stores=*)
+                RUN_COMPARE_STORES=true
+                COMPARE_STORES_DATE="${1#*=}"
+                shift
+                ;;
+            --compare-stores)
+                RUN_COMPARE_STORES=true
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    COMPARE_STORES_DATE="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --inspect-feature-volume=*)
+                RUN_INSPECT_VOLUME=true
+                FEATURE_VOLUME_NAME="${1#*=}"
+                shift
+                ;;
+            --inspect-feature-volume)
+                RUN_INSPECT_VOLUME=true
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    FEATURE_VOLUME_NAME="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --monitor-feature-pipeline=*)
+                RUN_MONITOR_PIPELINE=true
+                MONITOR_PROCESS_DATE="${1#*=}"
+                shift
+                ;;
+            --monitor-feature-pipeline)
+                RUN_MONITOR_PIPELINE=true
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    MONITOR_PROCESS_DATE="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --query-offline-features=*)
+                RUN_QUERY_OFFLINE=true
+                QUERY_OFFLINE_DATE="${1#*=}"
+                shift
+                ;;
+            --query-offline-features)
+                RUN_QUERY_OFFLINE=true
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    QUERY_OFFLINE_DATE="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --query-online-features=*)
+                RUN_QUERY_ONLINE=true
+                QUERY_ONLINE_PATIENT="${1#*=}"
+                shift
+                ;;
+            --query-online-features)
+                RUN_QUERY_ONLINE=true
+                if [[ -n "${2:-}" && "$2" != -* ]]; then
+                    QUERY_ONLINE_PATIENT="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
             --level)
                 if [ -z "$2" ]; then
                     log_error "Please specify a level (0-3)"
@@ -199,6 +296,15 @@ parse_arguments() {
     if ! validate_management_commands "$has_start" "$has_stop" "$has_restart" "$has_clean"; then
         show_conflict_error
         exit 1
+    fi
+
+    if [ "$TARGET_LEVEL" -ne 3 ]; then
+        if [ "$RUN_COMPARE_STORES" = true ] || [ "$RUN_INSPECT_VOLUME" = true ] || \
+           [ "$RUN_MONITOR_PIPELINE" = true ] || [ "$RUN_QUERY_OFFLINE" = true ] || \
+           [ "$RUN_QUERY_ONLINE" = true ]; then
+            log_error "Feature engineering utilities require --level 3"
+            exit 1
+        fi
     fi
 }
 
@@ -379,6 +485,58 @@ main() {
                 show_feature_engineering_urls
                 ;;
         esac
+    fi
+
+    if [ "$TARGET_LEVEL" -eq 3 ]; then
+        if [ "$RUN_COMPARE_STORES" = true ]; then
+            echo ""
+            log_info "Comparing feature stores..."
+            if [ -n "$COMPARE_STORES_DATE" ]; then
+                "${FEATURE_ENGINEERING_DIR}/compare_stores.sh" "$COMPARE_STORES_DATE"
+            else
+                "${FEATURE_ENGINEERING_DIR}/compare_stores.sh"
+            fi
+        fi
+
+        if [ "$RUN_INSPECT_VOLUME" = true ]; then
+            echo ""
+            log_info "Inspecting feature store volume..."
+            if [ -n "$FEATURE_VOLUME_NAME" ]; then
+                "${FEATURE_ENGINEERING_DIR}/inspect_volume.sh" "$FEATURE_VOLUME_NAME"
+            else
+                "${FEATURE_ENGINEERING_DIR}/inspect_volume.sh"
+            fi
+        fi
+
+        if [ "$RUN_MONITOR_PIPELINE" = true ]; then
+            echo ""
+            log_info "Running feature engineering pipeline monitor..."
+            if [ -n "$MONITOR_PROCESS_DATE" ]; then
+                "${FEATURE_ENGINEERING_DIR}/monitoring.sh" "$MONITOR_PROCESS_DATE"
+            else
+                "${FEATURE_ENGINEERING_DIR}/monitoring.sh"
+            fi
+        fi
+
+        if [ "$RUN_QUERY_OFFLINE" = true ]; then
+            echo ""
+            log_info "Querying offline feature store..."
+            if [ -n "$QUERY_OFFLINE_DATE" ]; then
+                python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" offline "$QUERY_OFFLINE_DATE"
+            else
+                python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" offline
+            fi
+        fi
+
+        if [ "$RUN_QUERY_ONLINE" = true ]; then
+            echo ""
+            log_info "Querying online feature store..."
+            if [ -n "$QUERY_ONLINE_PATIENT" ]; then
+                python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" online "$QUERY_ONLINE_PATIENT"
+            else
+                python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" online
+            fi
+        fi
     fi
 
     if [ "$SHOW_LOGS" = true ]; then
