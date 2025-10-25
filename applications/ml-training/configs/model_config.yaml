@@ -165,4 +165,4 @@ training:
   
   # Save best model
   save_best_model: true
-  model_registry_name: "adverse_event_predictor"
+  model_registry_name: "adverse-event-predictor"

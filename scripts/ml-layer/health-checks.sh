@@ -46,7 +46,7 @@ check_mlflow_server() {
             "docker exec mlflow-server python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()\""
 
         run_ml_pipeline_check "MLflow experiments API reachable" \
-            "docker exec mlflow-server python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/api/2.0/mlflow/experiments/list').read()\""
+            "docker exec mlflow-server python -c \"import json, urllib.request; req = urllib.request.Request('http://localhost:5000/api/2.0/mlflow/experiments/search', data=json.dumps({'max_results': 1}).encode(), headers={'Content-Type': 'application/json'}, method='POST'); urllib.request.urlopen(req).read()\""
 
         run_ml_pipeline_check "MLflow artifacts bucket present" \
             "docker exec minio mc ls myminio/mlflow-artifacts >/dev/null 2>&1" \

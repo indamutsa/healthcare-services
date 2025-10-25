@@ -587,6 +587,9 @@ services:
       REDIS_PORT: 6379
       MODEL_NAME: adverse-event-predictor
       MODEL_STAGE: production
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
     networks:
       - mlops-network
     healthcheck:

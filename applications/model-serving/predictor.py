@@ -116,17 +116,22 @@ class Predictor:
 
     def _init_redis(self, settings: ServiceSettings):
         try:
-            pool = redis.ConnectionPool(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                db=settings.redis_db,
-                username=settings.redis_username,
-                password=settings.redis_password,
-                decode_responses=False,
-                ssl=settings.redis_tls,
-                socket_timeout=2.0,
-                socket_connect_timeout=2.0,
-            )
+            connection_kwargs = {
+                "host": settings.redis_host,
+                "port": settings.redis_port,
+                "db": settings.redis_db,
+                "username": settings.redis_username,
+                "password": settings.redis_password,
+                "decode_responses": False,
+                "socket_timeout": 2.0,
+                "socket_connect_timeout": 2.0,
+            }
+            
+            if settings.redis_tls:
+                connection_kwargs["ssl"] = True
+                connection_kwargs["ssl_cert_reqs"] = None
+            
+            pool = redis.ConnectionPool(**connection_kwargs)
             return redis.Redis(connection_pool=pool)
         except RedisError as exc:
             _LOGGER.warning("Failed to establish Redis connection", exc_info=exc)
