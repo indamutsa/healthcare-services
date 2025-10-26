@@ -142,8 +142,8 @@ docker_compose_down() {
     # Remove volumes if requested
     if [ "$remove_volumes" = true ]; then
         log_warning "Removing volumes for level $level..."
-        # Note: This removes all volumes, be careful
-        docker compose down --volumes
+        # Note: This removes all services for the compose project (volumes + orphaned resources)
+        docker compose down --volumes --remove-orphans >/dev/null 2>&1 || true
     fi
 }
 

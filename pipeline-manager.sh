@@ -66,7 +66,7 @@ ${GREEN}Management Commands (Mutually Exclusive):${NC}
   --start               Start level services
   --stop                Stop services and remove volumes (data loss!)
   --restart-rebuild     Rebuild and restart services
-  --clean               Full cleanup (interactive confirmation)
+  --clean               Full cleanup with cascading to dependencies (interactive confirmation)
 
 ${GREEN}Level Selection:${NC}
   --level <N>           Target level (0-${ACTIVE_MAX_LEVEL})
@@ -131,8 +131,9 @@ ${GREEN}Level-Specific Commands:${NC}
 
 ${YELLOW}Command Rules:${NC}
   • Only ONE management command per execution
-  • Information commands can be freely combined
+  • Information commands can be combined with management commands (except --clean)
   • Example: --start -vhs ✓  |  --start --stop ✗
+  • Note: --clean skips information commands (cleanup is final operation)
 
 ${CYAN}Available Levels:${NC}
   Level 0: MinIO, PostgreSQL, Redis, Kafka, Zookeeper
@@ -328,6 +329,15 @@ parse_arguments() {
         exit 1
     fi
 
+    # Disable all information commands when cleaning
+    if [ "$has_clean" = true ]; then
+        SHOW_HEALTH=false
+        SHOW_LOGS=false
+        SHOW_SUMMARY=false
+        SHOW_OPEN=false
+        VISUALIZE=false
+    fi
+
     if [ "$TARGET_LEVEL" -ne 3 ]; then
         if [ "$RUN_COMPARE_STORES" = true ] || [ "$RUN_INSPECT_VOLUME" = true ] || \
            [ "$RUN_MONITOR_PIPELINE" = true ] || [ "$RUN_QUERY_OFFLINE" = true ] || \
@@ -491,48 +501,75 @@ main() {
     # Execute management command based on level
     case $ACTION in
         start)
-            case $TARGET_LEVEL in
-                0)
-                    start_infrastructure false
-                    ;;
-                1)
-                    start_data_ingestion false
-                    ;;
-                2)
-                    start_data_processing false
-                    ;;
-                3)
-                    start_feature_engineering false
-                    ;;
-                4)
-                    start_ml_pipeline false
-                    ;;
-                5)
-                    start_orchestration false
-                    ;;
-            esac
+            # Get all levels to start (dependencies first, then target)
+            mapfile -t start_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+            
+            log_info "Starting levels: ${start_levels[*]}"
+            echo ""
+            
+            # Start each level in order (dependencies first, then target)
+            for level in "${start_levels[@]}"; do
+                log_info "Starting Level $level: ${LEVEL_NAMES[$level]}..."
+                case $level in
+                    0)
+                        start_infrastructure false
+                        ;;
+                    1)
+                        start_data_ingestion false
+                        ;;
+                    2)
+                        start_data_processing false
+                        ;;
+                    3)
+                        start_feature_engineering false
+                        ;;
+                    4)
+                        start_ml_pipeline false
+                        ;;
+                    5)
+                        start_orchestration false
+                        ;;
+                esac
+            done
             ;;
         stop)
-            case $TARGET_LEVEL in
-                0)
-                    stop_infrastructure true  # Remove containers AND volumes
-                    ;;
-                1)
-                    stop_data_ingestion true  # Remove containers AND volumes
-                    ;;
-                2)
-                    stop_data_processing true  # Remove containers AND volumes
-                    ;;
-                3)
-                    stop_feature_engineering true  # Remove containers AND volumes
-                    ;;
-                4)
-                    stop_ml_pipeline true  # Remove containers AND volumes
-                    ;;
-                5)
-                    stop_orchestration true  # Remove containers AND volumes
-                    ;;
-            esac
+            # Get all levels to stop (target level + dependencies for cascading levels)
+            local stop_levels=()
+            if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 1 ] || [ "$TARGET_LEVEL" -eq 3 ]; then
+                # Levels 0, 1, 3: stop only the target level (no cascading)
+                stop_levels=("$TARGET_LEVEL")
+            else
+                # Levels 2, 4, 5: cascade stop to dependencies
+                mapfile -t stop_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+            fi
+            
+            log_info "Stopping levels: ${stop_levels[*]}"
+            echo ""
+            
+            # Stop each level in order (dependencies first, then target)
+            for level in "${stop_levels[@]}"; do
+                log_info "Stopping Level $level: ${LEVEL_NAMES[$level]}..."
+                case $level in
+                    0)
+                        stop_infrastructure true false  # Remove containers AND volumes, no cascade
+                        ;;
+                    1)
+                        stop_data_ingestion true false  # Remove containers AND volumes, no cascade
+                        ;;
+                    2)
+                        stop_data_processing true false  # Remove containers AND volumes, no cascade
+                        ;;
+                    3)
+                        stop_feature_engineering true false  # Remove containers AND volumes, no cascade
+                        ;;
+                    4)
+                        stop_ml_pipeline true false  # Remove containers AND volumes, no cascade
+                        ;;
+                    5)
+                        stop_orchestration true false  # Remove containers AND volumes, no cascade
+                        ;;
+                esac
+            done
             ;;
         restart)
             case $TARGET_LEVEL in
@@ -558,40 +595,104 @@ main() {
             ;;
         clean)
             print_header "🧹 Full Cleanup - Level $TARGET_LEVEL"
-            echo -e "${RED}This will remove all containers, volumes, and networks!${NC}"
+            
+            # Get all levels to clean (target level + dependencies)
+            local clean_levels=()
+            mapfile -t clean_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
+            
+            echo -e "${RED}⚠️  DESTRUCTIVE OPERATION - This will permanently delete:${NC}"
             echo ""
-            read -p "Are you sure? Type 'yes' to continue: " confirm
-            if [ "$confirm" = "yes" ]; then
-                case $TARGET_LEVEL in
-                    0)
-                        stop_infrastructure true
-                        ;;
-                    1)
-                        stop_data_ingestion true
-                        ;;
-                    2)
-                        stop_data_processing true
-                        ;;
-                    3)
-                        stop_feature_engineering true
-                        ;;
-                    4)
-                        stop_ml_pipeline true
-                        ;;
-                    5)
-                        stop_orchestration true
-                        ;;
-                esac
-                docker compose down -v --remove-orphans 2>/dev/null || true
-                log_success "Level $TARGET_LEVEL fully cleaned"
+            echo -e "${YELLOW}For Level $TARGET_LEVEL and all dependencies (${clean_levels[*]}):${NC}"
+            echo "  • All running and stopped containers"
+            echo "  • All named volumes (data will be lost)"
+            echo "  • All custom networks"
+            echo "  • All project-specific Docker images"
+            echo "  • All dangling images"
+            echo ""
+            echo -e "${RED}This action cannot be undone!${NC}"
+            echo ""
+            read -p "Type 'yes' to confirm complete cleanup: " confirm
+                if [ "$confirm" = "yes" ]; then
+                    # Reverse the levels for cleanup (from highest to lowest)
+                    reversed_levels=()
+                    for ((i=${#clean_levels[@]}-1; i>=0; i--)); do
+                        reversed_levels+=("${clean_levels[i]}")
+                    done
+                    log_info "Performing comprehensive cleanup for levels: ${reversed_levels[*]}"
+                    echo ""
+
+                    # Clean each level in reverse order (from highest to lowest)
+                    for level in "${reversed_levels[@]}"; do
+                        echo ""
+                        echo "🧹 Cleaning Level $level..."
+                        
+                        # Step 1: Stop containers for this level
+                        echo "  🛑 Stopping containers..."
+                        docker compose stop --level $level 2>/dev/null || true
+                        
+                        # Step 2: Remove containers for this level
+                        echo "  🗑️  Removing containers..."
+                        docker compose rm -f --level $level 2>/dev/null || true
+                        
+                        # Step 3: Remove volumes for this level
+                        echo "  💾 Removing volumes..."
+                        docker compose down -v --level $level 2>/dev/null || true
+                        
+                        # Step 4: Remove networks for this level
+                        echo "  🌐 Removing networks..."
+                        docker compose down --remove-orphans --level $level 2>/dev/null || true
+                    done
+                    
+                    # Final cleanup of any remaining resources
+                    echo ""
+                    echo "🧹 Final cleanup of remaining resources..."
+                    
+                    # Remove any remaining project containers
+                    remaining_containers=$(docker ps -aq --filter "label=com.docker.compose.project=clinical-trials" 2>/dev/null || true)
+                    if [ -n "$remaining_containers" ]; then
+                        echo "  🗑️  Removing remaining containers..."
+                        docker rm -f $remaining_containers 2>/dev/null || true
+                    fi
+                    
+                    # Remove any remaining project volumes
+                    remaining_volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=clinical-trials" 2>/dev/null || true)
+                    if [ -n "$remaining_volumes" ]; then
+                        echo "  💾 Removing remaining volumes..."
+                        docker volume rm -f $remaining_volumes 2>/dev/null || true
+                    fi
+                    
+                    # Remove any remaining project networks
+                    remaining_networks=$(docker network ls -q --filter "label=com.docker.compose.project=clinical-trials" 2>/dev/null || true)
+                    if [ -n "$remaining_networks" ]; then
+                        echo "  🌐 Removing remaining networks..."
+                        docker network rm $remaining_networks 2>/dev/null || true
+                    fi
+                    
+                    # Remove project-specific images
+                    echo "  📦 Removing project-specific images..."
+                    project_images=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "clinical-trials" 2>/dev/null || true)
+                    if [ -n "$project_images" ]; then
+                        echo "$project_images" | xargs -r docker rmi -f 2>/dev/null || true
+                    fi
+                    
+                    # Remove dangling images
+                    echo "  🧹 Removing dangling images..."
+                    dangling_images=$(docker images -f "dangling=true" -q 2>/dev/null || true)
+                    if [ -n "$dangling_images" ]; then
+                        docker rmi -f $dangling_images 2>/dev/null || true
+                    fi
+
+                    echo ""
+                    echo "✅ Cleanup completed!"
             else
                 log_warning "Cleanup cancelled"
             fi
             ;;
     esac
     
-    # Execute information commands based on level
-    if [ "$SHOW_SUMMARY" = true ]; then
+    # Execute information commands based on level (skip after clean operations)
+    if [ "$ACTION" != "clean" ]; then
+        if [ "$SHOW_SUMMARY" = true ]; then
         echo ""
         local summary_levels=()
         mapfile -t summary_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
@@ -602,9 +703,9 @@ main() {
                 echo ""
             fi
         done
-    fi
+        fi
 
-    if [ "$SHOW_HEALTH" = true ]; then
+        if [ "$SHOW_HEALTH" = true ]; then
         echo ""
         local health_levels=()
         mapfile -t health_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
@@ -621,9 +722,9 @@ main() {
         if [ "$health_result" -ne 0 ]; then
             exit_status=1
         fi
-    fi
+        fi
 
-    if [ "$VISUALIZE" = true ]; then
+        if [ "$VISUALIZE" = true ]; then
         echo ""
         local visualization_levels=()
         mapfile -t visualization_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
@@ -634,9 +735,9 @@ main() {
                 echo ""
             fi
         done
-    fi
+        fi
 
-    if [ "$SHOW_OPEN" = true ]; then
+        if [ "$SHOW_OPEN" = true ]; then
         echo ""
         local url_levels=()
         mapfile -t url_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
@@ -647,9 +748,9 @@ main() {
                 echo ""
             fi
         done
-    fi
+        fi
 
-    if [ "$TARGET_LEVEL" -eq 3 ]; then
+        if [ "$TARGET_LEVEL" -eq 3 ]; then
         if [ "$RUN_COMPARE_STORES" = true ]; then
             echo ""
             log_info "Comparing feature stores..."
@@ -699,14 +800,14 @@ main() {
                 python3 "${FEATURE_ENGINEERING_DIR}/query_features.sh" online
             fi
         fi
-    fi
+        fi
 
-    if [ "$RUN_TRAINING" = true ]; then
+        if [ "$RUN_TRAINING" = true ]; then
         echo ""
         run_ml_training_job
-    fi
+        fi
 
-    if [ "$SHOW_LOGS" = true ]; then
+        if [ "$SHOW_LOGS" = true ]; then
         echo ""
         local log_levels=()
         mapfile -t log_levels < <(resolve_level_hierarchy "$TARGET_LEVEL")
@@ -723,6 +824,7 @@ main() {
             log_info "Following logs for Levels ${log_levels[*]}..."
             docker compose logs -f "${services[@]}"
         fi
+    fi
     fi
 
     # Show next steps

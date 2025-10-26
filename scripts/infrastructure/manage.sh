@@ -63,6 +63,7 @@ start_infrastructure() {
 # Stop infrastructure services
 stop_infrastructure() {
     local remove_volumes=${1:-true}  # Default to removing volumes
+    local cascade=${2:-true}  # Parameter for consistency (not used at level 0)
 
     print_level_header 0 "Stopping"
 

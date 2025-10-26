@@ -107,6 +107,7 @@ start_ml_pipeline() {
 
 stop_ml_pipeline() {
     local remove_volumes=${1:-true}
+    local cascade=${2:-true}
 
     print_header "🔻 Cascade Stop: Level 4 → 3 → 2 → 1 → 0"
     print_level_header 4 "Stopping"
@@ -134,11 +135,16 @@ stop_ml_pipeline() {
         log_warning "Level 4 already stopped"
     fi
 
-    echo ""
-    stop_feature_engineering "$remove_volumes"
-
-    echo ""
-    log_success "Cascade stop complete (Levels 4 → 0 stopped)"
+    # Then cascade to lower levels if requested
+    if [ "$cascade" = true ]; then
+        echo ""
+        stop_feature_engineering "$remove_volumes" "$cascade"
+        echo ""
+        log_success "Cascade stop complete (Levels 4 → 0 stopped)"
+    else
+        echo ""
+        log_success "Level 4 stopped (no cascade)"
+    fi
 }
 
 rebuild_ml_pipeline() {

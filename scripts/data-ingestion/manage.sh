@@ -89,6 +89,7 @@ start_data_ingestion() {
 # Stop data ingestion services (CASCADE STOP: stops Level 1 → 0)
 stop_data_ingestion() {
     local remove_volumes=${1:-true}
+    local cascade=${2:-true}
 
     print_header "🔻 Cascade Stop: Level 1 → 0"
 
@@ -124,12 +125,16 @@ stop_data_ingestion() {
         log_warning "Level 1 is already stopped"
     fi
 
-    # Then cascade to Level 0
-    echo ""
-    stop_infrastructure "$remove_volumes"
-
-    echo ""
-    log_success "Cascade stop complete (Levels 1 → 0 stopped)"
+    # Then cascade to Level 0 if requested
+    if [ "$cascade" = true ]; then
+        echo ""
+        stop_infrastructure "$remove_volumes" "$cascade"
+        echo ""
+        log_success "Cascade stop complete (Levels 1 → 0 stopped)"
+    else
+        echo ""
+        log_success "Level 1 stopped (no cascade)"
+    fi
 }
 
 # Restart data ingestion services

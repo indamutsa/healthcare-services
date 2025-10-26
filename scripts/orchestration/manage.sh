@@ -19,14 +19,20 @@ ORCHESTRATION_SERVICES=(
 start_orchestration() {
     local rebuild="$1"
 
-    print_header "🎯 Starting Level 5 - Orchestration (Airflow)"
+    print_level_header 5 "Starting"
 
-    # Check dependencies
+    # Ensure Level 4 dependencies are running
     log_info "Checking dependencies..."
-    check_mlflow_running || {
-        log_error "MLflow (Level 4) must be running before starting Airflow"
-        return 1
-    }
+    if ! check_level_running 4; then
+        echo -e "  ${YELLOW}⚠️  Dependency: Level 4 (ML Pipeline) not running${NC}"
+        echo -e "  ${CYAN}→ Auto-starting Level 4...${NC}"
+        echo ""
+        start_ml_pipeline false
+        echo ""
+        echo -e "  ${GREEN}✓ Level 4 started${NC}"
+    else
+        echo -e "  ${GREEN}✓ Dependency: Level 4 (ML Pipeline) running${NC}"
+    fi
 
     # Build Airflow image if needed
     if [ "$rebuild" = true ]; then
@@ -53,17 +59,47 @@ start_orchestration() {
 # Stop Orchestration Services
 stop_orchestration() {
     local remove_volumes="$1"
+    local cascade="${2:-true}"
 
-    print_header "🛑 Stopping Level 5 - Orchestration (Airflow)"
+    print_header "🔻 Cascade Stop: Level 5 → 4 → 3 → 2 → 1 → 0"
 
-    log_info "Stopping orchestration services..."
+    echo -e "${YELLOW}This will stop levels: 5, 4, 3, 2, 1, 0${NC}"
+    echo ""
 
-    if [ "$remove_volumes" = true ]; then
-        docker compose down -v "${ORCHESTRATION_SERVICES[@]}" 2>/dev/null || true
-        log_warning "Airflow volumes and data have been removed"
+    print_level_header 5 "Stopping"
+
+    if check_level_running 5; then
+        echo "Services to stop:"
+        for service in ${LEVEL_SERVICES[5]}; do
+            if check_service_running "$service"; then
+                echo -e "  • $service ${RED}[STOPPING]${NC}"
+            else
+                echo -e "  • $service ${YELLOW}[ALREADY STOPPED]${NC}"
+            fi
+        done
+        echo ""
+
+        log_info "Stopping orchestration services..."
+        docker_compose_down 5 "$remove_volumes"
+
+        if [ "$remove_volumes" = true ]; then
+            log_warning "Airflow volumes and data have been removed"
+        else
+            log_success "Airflow services stopped (volumes preserved)"
+        fi
     else
-        docker compose stop "${ORCHESTRATION_SERVICES[@]}" 2>/dev/null || true
-        log_info "Airflow services stopped (volumes preserved)"
+        log_warning "Level 5 is already stopped"
+    fi
+
+    # Then cascade to lower levels if requested
+    if [ "$cascade" = true ]; then
+        echo ""
+        stop_ml_pipeline "$remove_volumes" "$cascade"
+        echo ""
+        log_success "Cascade stop complete (Levels 5 → 0 stopped)"
+    else
+        echo ""
+        log_success "Level 5 stopped (no cascade)"
     fi
 }
 

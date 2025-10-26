@@ -138,6 +138,7 @@ start_data_processing() {
 # Stop data processing services (CASCADE STOP: Level 2 → 1 → 0)
 stop_data_processing() {
     local remove_volumes=${1:-true}
+    local cascade=${2:-true}
 
     print_header "🔻 Cascade Stop: Level 2 → 1 → 0"
 
@@ -170,11 +171,16 @@ stop_data_processing() {
         log_warning "Level 2 is already stopped"
     fi
 
-    echo ""
-    stop_data_ingestion "$remove_volumes"
-
-    echo ""
-    log_success "Cascade stop complete (Levels 2 → 0 stopped)"
+    # Then cascade to lower levels if requested
+    if [ "$cascade" = true ]; then
+        echo ""
+        stop_data_ingestion "$remove_volumes" "$cascade"
+        echo ""
+        log_success "Cascade stop complete (Levels 2 → 0 stopped)"
+    else
+        echo ""
+        log_success "Level 2 stopped (no cascade)"
+    fi
 }
 
 # Restart data processing services
