@@ -1,0 +1,38 @@
+[
+  {
+    "targets": [
+      "model-serving:8000",
+      "ml-training:5001",
+      "mlflow-server:5000",
+      "redis:6379",
+      "postgres-mlflow:5432"
+    ],
+    "labels": {
+      "service": "ml-pipeline",
+      "environment": "development",
+      "team": "ml-ops"
+    }
+  },
+  {
+    "targets": [
+      "clinical-data-gateway:8080",
+      "lab-results-processor:8081"
+    ],
+    "labels": {
+      "service": "clinical-services",
+      "environment": "development",
+      "team": "clinical"
+    }
+  },
+  {
+    "targets": [
+      "spark-master:8080",
+      "spark-worker:8081"
+    ],
+    "labels": {
+      "service": "spark-cluster",
+      "environment": "development",
+      "team": "data-engineering"
+    }
+  }
+]

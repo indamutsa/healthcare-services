@@ -1,0 +1,72 @@
+groups:
+  - name: clinical_data
+    rules:
+      - alert: ClinicalDataPipelineDown
+        expr: up{job=~"clinical-data-gateway|lab-results-processor"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: clinical-pipeline
+        annotations:
+          summary: "Clinical data pipeline component is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes"
+
+      - alert: HighLabResultsProcessingDelay
+        expr: lab_results_processing_delay_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          service: clinical-pipeline
+        annotations:
+          summary: "High lab results processing delay"
+          description: "Lab results processing delay is {{ $value }} seconds, above threshold of 300s"
+
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumer_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: data-ingestion
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer lag is {{ $value }} messages for topic {{ $labels.topic }}"
+
+      - alert: SparkJobFailure
+        expr: spark_job_status != "SUCCEEDED"
+        for: 1m
+        labels:
+          severity: critical
+          service: data-processing
+        annotations:
+          summary: "Spark job failure"
+          description: "Spark job {{ $labels.job_id }} has status {{ $value }}"
+
+      - alert: AdverseEventThresholdExceeded
+        expr: adverse_events_per_hour > 50
+        for: 10m
+        labels:
+          severity: critical
+          service: clinical-monitoring
+        annotations:
+          summary: "Adverse event threshold exceeded"
+          description: "Adverse events rate is {{ $value }} per hour, above threshold of 50"
+
+      - alert: ClinicalDataQualityLow
+        expr: clinical_data_quality_score < 0.9
+        for: 15m
+        labels:
+          severity: warning
+          service: clinical-pipeline
+        annotations:
+          summary: "Low clinical data quality"
+          description: "Data quality score is {{ $value }}, below threshold of 0.9"
+
+      - alert: PatientDataProcessingBacklog
+        expr: patient_records_pending_processing > 500
+        for: 10m
+        labels:
+          severity: warning
+          service: clinical-pipeline
+        annotations:
+          summary: "Patient data processing backlog"
+          description: "{{ $value }} patient records pending processing"

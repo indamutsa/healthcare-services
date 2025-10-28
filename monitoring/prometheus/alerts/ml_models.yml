@@ -1,0 +1,62 @@
+groups:
+  - name: ml_models
+    rules:
+      - alert: ModelAccuracyDropping
+        expr: model_accuracy < 0.85
+        for: 10m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "Model accuracy dropping for {{ $labels.model_name }}"
+          description: "Model accuracy is {{ $value }} for {{ $labels.model_name }}, below threshold of 0.85"
+
+      - alert: ModelPredictionLatencyHigh
+        expr: model_prediction_latency_seconds > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "High model prediction latency for {{ $labels.model_name }}"
+          description: "Prediction latency is {{ $value }} seconds for {{ $labels.model_name }}, above threshold of 1.0s"
+
+      - alert: ModelDriftDetected
+        expr: model_drift_score > 0.7
+        for: 15m
+        labels:
+          severity: critical
+          service: ml-pipeline
+        annotations:
+          summary: "Model drift detected for {{ $labels.model_name }}"
+          description: "Model drift score is {{ $value }} for {{ $labels.model_name }}, above threshold of 0.7"
+
+      - alert: ModelServingDown
+        expr: up{job="model-serving"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: ml-pipeline
+        annotations:
+          summary: "Model serving is down"
+          description: "Model serving service has been down for more than 2 minutes"
+
+      - alert: HighModelRequestRate
+        expr: rate(model_requests_total[5m]) > 1000
+        for: 5m
+        labels:
+          severity: info
+          service: ml-pipeline
+        annotations:
+          summary: "High model request rate for {{ $labels.model_name }}"
+          description: "Request rate is {{ $value }} requests/second for {{ $labels.model_name }}"
+
+      - alert: ModelFailureRateHigh
+        expr: rate(model_failures_total[5m]) / rate(model_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: ml-pipeline
+        annotations:
+          summary: "High model failure rate for {{ $labels.model_name }}"
+          description: "Failure rate is {{ $value }} for {{ $labels.model_name }}, above threshold of 5%"

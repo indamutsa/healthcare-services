@@ -110,14 +110,17 @@ docker run -d \
 
 ## 📊 Level Architecture
 
-| Level | Name | Services | Dependencies |
-|-------|------|----------|--------------|
-| 0 | Infrastructure | minio, postgres, redis, kafka, zookeeper | None |
-| 1 | Data Ingestion | kafka-producer, kafka-consumer, clinical-mq | 0 |
-| 2 | Data Processing | spark-master, spark-worker, streaming, batch | 0, 1 |
-| 3 | Feature Engineering | feature-engineering | 0, 1, 2 |
-| 4 | ML Pipeline | **mlflow-server**, ml-training, model-serving | 0, 1, 2, 3 |
-| 5 | Observability | airflow, prometheus, grafana, opensearch | 0, 1, 2, 3, 4 |
+| Level | Name | Services | Dependencies | Status |
+|-------|------|----------|--------------|--------|
+| 0 | Infrastructure | minio, postgres, redis, kafka, zookeeper | None | ✅ Production |
+| 1 | Data Ingestion | kafka-producer, kafka-consumer, clinical-mq | 0 | ✅ Production |
+| 2 | Data Processing | spark-master, spark-worker, streaming, batch | 0, 1 | ✅ Production |
+| 3 | Feature Engineering | feature-engineering | 0, 1, 2 | ✅ Production |
+| 4 | ML Pipeline | **mlflow-server**, ml-training, model-serving | 0, 1, 2, 3 | ✅ Production |
+| 5 | Orchestration | airflow-scheduler, airflow-webserver, airflow-workers | 0 | ✅ Production |
+| 6 | Observability | prometheus, grafana, opensearch, filebeat | 0 | 🚧 In Progress |
+| 7 | Platform Engineering | argocd, github-actions-runner, istio, argo-rollouts | 0 | 📋 Planned |
+| 8 | Security Testing | metasploit, burp-suite, owasp-zap, trivy | 0 | 📋 Planned |
 
 **Note:** MLflow server moved from Level 0 to Level 4!
 
@@ -126,6 +129,9 @@ docker run -d \
 ## 🔻 Cascade Stop Behavior
 
 ```
+--stop-level 8  →  Stops 8, 7, 6, 5, 4, 3, 2, 1, 0
+--stop-level 7  →  Stops 7, 6, 5, 4, 3, 2, 1, 0
+--stop-level 6  →  Stops 6, 5, 4, 3, 2, 1, 0
 --stop-level 5  →  Stops 5, 4, 3, 2, 1, 0
 --stop-level 4  →  Stops 4, 3, 2, 1, 0
 --stop-level 3  →  Stops 3, 2, 1, 0
@@ -185,7 +191,7 @@ docker run -d \
 ### Shutdown Workflow
 ```bash
 # Stop everything but keep data
-./manage-pipeline.sh --stop-level 5
+./manage-pipeline.sh --stop-level 8
 
 # Or stop specific level (cascade)
 ./manage-pipeline.sh --stop-level 2   # Stops 2, 1, 0
@@ -366,6 +372,9 @@ Level N → always includes dependencies (N, N-1, ..., 0)
 --start-level 3  →  Starts: 0 → 1 → 2 → 3
 --start-level 4  →  Starts: 0 → 1 → 2 → 3 → 4
 --start-level 5  →  Starts: 0 → 1 → 2 → 3 → 4 → 5
+--start-level 6  →  Starts: 0 → 1 → 2 → 3 → 4 → 5 → 6
+--start-level 7  →  Starts: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7
+--start-level 8  →  Starts: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 ```
 
 ### Stop Cascade (Top-Down)
@@ -376,6 +385,9 @@ Level N → always includes dependencies (N, N-1, ..., 0)
 --stop-level 3  →  Stops: 3 → 2 → 1 → 0
 --stop-level 4  →  Stops: 4 → 3 → 2 → 1 → 0
 --stop-level 5  →  Stops: 5 → 4 → 3 → 2 → 1 → 0
+--stop-level 6  →  Stops: 6 → 5 → 4 → 3 → 2 → 1 → 0
+--stop-level 7  →  Stops: 7 → 6 → 5 → 4 → 3 → 2 → 1 → 0
+--stop-level 8  →  Stops: 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1 → 0
 ```
 
 ### Health Check Cascade (Bottom-Up)
@@ -386,6 +398,9 @@ Level N → always includes dependencies (N, N-1, ..., 0)
 --level 3  →  Checks: 0 → 1 → 2 → 3
 --level 4  →  Checks: 0 → 1 → 2 → 3 → 4
 --level 5  →  Checks: 0 → 1 → 2 → 3 → 4 → 5
+--level 6  →  Checks: 0 → 1 → 2 → 3 → 4 → 5 → 6
+--level 7  →  Checks: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7
+--level 8  →  Checks: 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 ```
 
 ---
@@ -479,7 +494,13 @@ Think of the pipeline as a **building**:
 
 ```
 ┌─────────────────────────┐
-│  Level 5: Observability │  ← 5th floor
+│  Level 8: Security      │  ← 8th floor
+├─────────────────────────┤
+│  Level 7: Platform Eng  │  ← 7th floor
+├─────────────────────────┤
+│  Level 6: Observability │  ← 6th floor
+├─────────────────────────┤
+│  Level 5: Orchestration │  ← 5th floor
 ├─────────────────────────┤
 │  Level 4: ML Pipeline   │  ← 4th floor
 ├─────────────────────────┤
@@ -493,9 +514,9 @@ Think of the pipeline as a **building**:
 └─────────────────────────┘
 ```
 
-**Starting:** Build from foundation up (0 → 5)
-**Stopping:** Demolish from top down (5 → 0)
-**Checking:** Inspect from foundation up (0 → 5)
+**Starting:** Build from foundation up (0 → 8)
+**Stopping:** Demolish from top down (8 → 0)
+**Checking:** Inspect from foundation up (0 → 8)
 
 ---
 
@@ -587,7 +608,7 @@ Think of the pipeline as a **building**:
 ### Clean Shutdown
 ```bash
 # Stop everything cleanly
-./manage-pipeline.sh --stop-level 5
+./manage-pipeline.sh --stop-level 8
 
 # Or just stop up to level you need
 ./manage-pipeline.sh --stop-level 2  # Stops 2,1,0 only
@@ -599,10 +620,10 @@ Think of the pipeline as a **building**:
 
 | Operation | manage-pipeline | health-check | Direction | Cascade |
 |-----------|----------------|--------------|-----------|---------|
-| Start Level N | `--start-level N` | N/A | ⬆️ Up (0→N) | Auto-deps |
-| Stop Level N | `--stop-level N` | N/A | ⬇️ Down (N→0) | Forced |
-| Check Level N | N/A | `--level N` | ⬆️ Up (0→N) | Auto-deps |
-| Rebuild N | `--start-level-rebuild N` | N/A | 🔄 Both | Stop N→0, Build 0→N |
+| Start Level N (0-8) | `--start-level N` | N/A | ⬆️ Up (0→N) | Auto-deps |
+| Stop Level N (0-8) | `--stop-level N` | N/A | ⬇️ Down (N→0) | Forced |
+| Check Level N (0-8) | N/A | `--level N` | ⬆️ Up (0→N) | Auto-deps |
+| Rebuild N (0-8) | `--start-level-rebuild N` | N/A | 🔄 Both | Stop N→0, Build 0→N |
 
 ---
 

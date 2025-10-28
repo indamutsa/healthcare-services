@@ -12,10 +12,37 @@ volumes:
   grafana-data:
   redis-data:
   spark-logs:
-  elasticsearch-data:
-  logstash-data:
+  opensearch-data:
+  data-prepper-data:
   redis-insight-data:
   feature-data:
+
+configs:
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 15s
+        evaluation_interval: 15s
+
+      scrape_configs:
+        - job_name: 'prometheus'
+          static_configs:
+            - targets: ['localhost:9090']
+
+        - job_name: 'clinical-services'
+          static_configs:
+            - targets: ['clinical-data-gateway:8080', 'lab-results-processor:8081']
+          metrics_path: '/actuator/prometheus'
+          scrape_interval: 30s
+
+        - job_name: 'spark-metrics'
+          static_configs:
+            - targets: ['spark-master:8080', 'spark-worker:8081']
+          scrape_interval: 30s
+
+        - job_name: 'infrastructure'
+          static_configs:
+            - targets: ['redis-exporter:9121', 'postgres-exporter-mlflow:9187', 'postgres-exporter-airflow:9187', 'minio-exporter:9290', 'kafka-exporter:9308']
 
 services:
   # ============================================================================
@@ -58,6 +85,14 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   minio-setup:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
@@ -106,6 +141,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -132,6 +175,14 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
@@ -144,6 +195,14 @@ services:
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   postgres-mlflow:
     image: postgres:15-alpine
@@ -163,6 +222,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   postgres-airflow:
     image: postgres:15-alpine
@@ -182,6 +249,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
   redis:
     image: redis:7-alpine
@@ -197,6 +272,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
 
   redis-insight:
     image: redis/redisinsight:latest
@@ -214,6 +297,95 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - mlops-network
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 16M
+
+  postgres-exporter-mlflow:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter-mlflow
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://mlflow:mlflow@postgres-mlflow:5432/mlflow?sslmode=disable"
+    networks:
+      - mlops-network
+    depends_on:
+      - postgres-mlflow
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 16M
+
+  postgres-exporter-airflow:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter-airflow
+    ports:
+      - "9188:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://airflow:airflow@postgres-airflow:5432/airflow?sslmode=disable"
+    networks:
+      - mlops-network
+    depends_on:
+      - postgres-airflow
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 16M
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.7.0
+    container_name: kafka-exporter
+    ports:
+      - "9308:9308"
+    command:
+      - '--kafka.server=kafka:9092'
+    networks:
+      - mlops-network
+    depends_on:
+      - kafka
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 16M
+
 
 
   # ============================================================================
@@ -235,6 +407,14 @@ services:
     networks:
       - mlops-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - data-ingestion
 
@@ -259,6 +439,14 @@ services:
     networks:
       - mlops-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - data-ingestion
 
@@ -286,6 +474,14 @@ services:
     restart: unless-stopped
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     profiles:
       - data-ingestion
 
@@ -317,6 +513,14 @@ services:
     restart: unless-stopped
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - data-ingestion
 
@@ -348,6 +552,14 @@ services:
     restart: unless-stopped
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - data-ingestion
 
@@ -366,6 +578,14 @@ services:
     restart: on-failure
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - data-ingestion
 
@@ -384,6 +604,8 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
+      - SPARK_METRICS_ENABLED=true
+      - SPARK_METRICS_CONF=/opt/spark/conf/metrics.properties
     ports:
       - "8080:8080"
       - "7077:7077"
@@ -396,6 +618,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.3'
+          memory: 512M
     profiles:
       - data-processing
 
@@ -416,6 +646,8 @@ services:
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
+      - SPARK_METRICS_ENABLED=true
+      - SPARK_METRICS_CONF=/opt/spark/conf/metrics.properties
     ports:
       - "8081:8081"
     networks:
@@ -426,6 +658,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     profiles:
       - data-processing
 
@@ -450,6 +690,14 @@ services:
     networks:
       - mlops-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.3'
+          memory: 512M
     profiles:
       - data-processing
 
@@ -471,6 +719,14 @@ services:
       - PROCESS_HOURS=1
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.3'
+          memory: 512M
     profiles:
       - batch-job          # Keep backward compatibility
       - data-processing    # Add new level-based profile
@@ -499,6 +755,14 @@ services:
       - mlops-network
     volumes:
       - feature-data:/app/data 
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - feature-engineering  # Keep backward compatibility
       - features             # Add new level-based profile
@@ -540,8 +804,17 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     profiles:
       - ml-pipeline    # THIS IS THE KEY CHANGE - adds the profile
+      - observability  # Add to observability profile for monitoring
 
   ml-training:
     build:
@@ -565,6 +838,14 @@ services:
       - mlops-network
     volumes:
       - ./applications/ml-training:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.3'
+          memory: 512M
     profiles:
       - training       # Keep backward compatibility
       - ml-pipeline    # Add new level-based profile
@@ -597,9 +878,18 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - serving        # Keep backward compatibility
       - ml-pipeline    # Add new level-based profile
+      - observability  # Add to observability profile for monitoring
 
   # ============================================================================
   # LEVEL 5: ORCHESTRATION (Profile: orchestration)
@@ -664,6 +954,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - orchestration
 
@@ -695,6 +993,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.8'
+          memory: 768M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - orchestration
 
@@ -704,14 +1010,15 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
     networks:
       - mlops-network
     healthcheck:
@@ -719,6 +1026,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     profiles:
       - observability
 
@@ -734,8 +1049,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_INSTALL_PLUGINS: ''
     volumes:
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
     networks:
       - mlops-network
@@ -744,6 +1057,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - observability
 
@@ -752,6 +1073,8 @@ services:
       context: ./applications/monitoring-service
       dockerfile: Dockerfile
     container_name: monitoring-service
+    ports:
+      - "8001:8000"
     depends_on:
       - prometheus
       - model-serving
@@ -763,22 +1086,29 @@ services:
       CHECK_INTERVAL_SECONDS: 3600
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - monitoring       # Keep backward compatibility
       - observability    # Add new level-based profile
 
   opensearch:
-    image: opensearchproject/opensearch:2.14.0
+    image: opensearch-dev:latest
     container_name: opensearch
     environment:
       - discovery.type=single-node
-      - plugins.security.disabled=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "OPENSEARCH_JAVA_OPTS=-Xms256m -Xmx512m"
     ports:
       - "9200:9200"
       - "9600:9600"
     volumes:
-      - elasticsearch-data:/usr/share/opensearch/data
+      - opensearch-data:/usr/share/opensearch/data
     networks:
       - mlops-network
     healthcheck:
@@ -786,11 +1116,19 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.2'
+          memory: 256M
     profiles:
       - observability
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.14.0
+    image: dashboards-dev:latest
     container_name: opensearch-dashboards
     depends_on:
       opensearch:
@@ -807,6 +1145,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - observability
 
@@ -829,6 +1175,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     profiles:
       - observability
 
@@ -840,11 +1194,77 @@ services:
       data-prepper:
         condition: service_started
     volumes:
-      - ./monitoring/elk/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - ./monitoring/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     command: filebeat -e -strict.perms=false
     networks:
       - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
     profiles:
       - observability
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8086:8080"
+    networks:
+      - mlops-network
+    profiles:
+      - observability
+    command:
+      - '--housekeeping_interval=10s'
+      - '--docker_only=true'
+      - '--storage_duration=1m0s'
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /:/host:ro,rslave
+    ports:
+      - "9100:9100"
+    networks:
+      - mlops-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.02'
+          memory: 16M
+    profiles:
+      - observability
+
+

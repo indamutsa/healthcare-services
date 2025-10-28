@@ -1,0 +1,59 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 5s
+      queryTimeout: 60s
+      httpHeaderName1: "X-Custom-Header"
+      httpHeaderValue1: "CustomValue"
+
+  - name: OpenSearch
+    type: elasticsearch
+    access: proxy
+    url: http://opensearch:9200
+    database: "logs-*,metrics-*"
+    jsonData:
+      timeField: "@timestamp"
+      esVersion: 8.0.0
+      maxConcurrentShardRequests: 5
+      logMessageField: "message"
+      logLevelField: "level"
+      timeInterval: "5s"
+      interval: "Daily"
+      includeFrozen: false
+      logLevelMappings:
+        "unknown": "gray"
+        "info": "gray"
+        "debug": "gray"
+        "warning": "yellow"
+        "error": "red"
+        "critical": "red"
+    editable: true
+
+  - name: Clinical-Metrics
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    database: "clinical_metrics"
+    jsonData:
+      httpMethod: POST
+      timeInterval: 10s
+      queryTimeout: 60s
+    editable: true
+
+  - name: ML-Model-Metrics
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      queryTimeout: 60s
+    editable: true

@@ -117,12 +117,41 @@ chmod +x manage_pipeline.sh
 
 **✨ NEW**: MLflow server now starts at Level 4, not Level 0
 
-### Level 5: Observability
-**Services**: airflow-init, airflow-webserver, airflow-scheduler, prometheus, grafana, monitoring-service, opensearch, opensearch-dashboards, data-prepper, filebeat
+### Level 5: Orchestration
+**Services**: airflow-init, airflow-webserver, airflow-scheduler
 
 **Dependencies**: Level 0
 
-**What it does**: Monitors, orchestrates, and provides visibility into the entire pipeline
+**What it does**: Orchestrates workflows, schedules batch processing, feature syncs, and model retraining
+
+**Status**: ✅ Production
+
+### Level 6: Observability
+**Services**: prometheus, grafana, monitoring-service, opensearch, opensearch-dashboards, data-prepper, filebeat
+
+**Dependencies**: Level 0
+
+**What it does**: Monitors and provides visibility into the entire pipeline
+
+**Status**: 🚧 In Progress
+
+### Level 7: Platform Engineering
+**Services**: argocd, github-actions-runner, istio, argo-rollouts
+
+**Dependencies**: Level 0
+
+**What it does**: Provides GitOps workflows, CI/CD automation, service mesh, and progressive delivery
+
+**Status**: 📋 Planned
+
+### Level 8: Security Testing
+**Services**: metasploit, burp-suite, owasp-zap, trivy, sonarqube
+
+**Dependencies**: Level 0
+
+**What it does**: Automated security testing, vulnerability scanning, and penetration testing
+
+**Status**: 📋 Planned
 
 ## 🚀 Usage Examples
 
@@ -217,8 +246,8 @@ The nuclear option that removes EVERYTHING:
 
 ```bash
 # Start operations
---start-level <N>      # Start level N and dependencies
---start-full           # Start all levels (0-5)
+--start-level <N>      # Start level N and dependencies (N = 0-8)
+--start-full           # Start all levels (0-8)
 
 # Stop operations
 --stop-level <N>       # Stop level N (keep volumes)
@@ -349,10 +378,11 @@ After starting services, access them at:
 - **Redis UI**: http://localhost:5540
 - **Spark Master**: http://localhost:8080
 - **Model API**: http://localhost:8000
-- **Airflow UI**: http://localhost:8081 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **OpenSearch**: http://localhost:5601
+- **Airflow UI**: http://localhost:8081 (admin/admin) - Level 5
+- **Prometheus**: http://localhost:9090 - Level 6
+- **Grafana**: http://localhost:3000 (admin/admin) - Level 6
+- **OpenSearch**: http://localhost:5601 - Level 6
+- **ArgoCD**: http://localhost:8082 (planned) - Level 7
 
 ## ✅ Benefits of This System
 

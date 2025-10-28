@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "/home/codespace/.claude/statusline-command.sh"
-  },
   "permissions": {
     "allow": [
       "Bash(docker-compose restart:*)",
@@ -35,9 +31,15 @@
       "Bash(docker version:*)",
       "Bash(netstat:*)",
       "Bash(lsof:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "/home/codespace/.claude/statusline-command.sh"
   }
 }

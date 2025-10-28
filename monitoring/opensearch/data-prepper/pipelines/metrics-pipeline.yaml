@@ -1,0 +1,140 @@
+metrics-pipeline:
+  source:
+    http:
+      port: 21890
+      ssl: false
+      max_connection_count: 16
+      request_timeout: 30000
+      
+  processor:
+    # Timestamp processing
+    - date:
+        from_time_received: true
+        destination: "@timestamp"
+        
+    # Add environment metadata
+    - add_entries:
+        entries:
+          environment: "development"
+          cluster: "clinical-mlops"
+          pipeline_type: "metrics"
+          
+    # Parse metric types
+    - if:
+        contains:
+          metric_name: "cpu"
+        then:
+          - add_entries:
+              entries:
+                metric_category: "infrastructure"
+                resource_type: "system"
+                
+    - if:
+        contains:
+          metric_name: "memory"
+        then:
+          - add_entries:
+              entries:
+                metric_category: "infrastructure"
+                resource_type: "system"
+                
+    - if:
+        contains:
+          metric_name: "model_"
+        then:
+          - add_entries:
+              entries:
+                metric_category: "ml"
+                resource_type: "application"
+                
+    - if:
+        contains:
+          metric_name: "clinical_"
+        then:
+          - add_entries:
+              entries:
+                metric_category: "clinical"
+                resource_type: "application"
+                
+    - if:
+        contains:
+          metric_name: "request_"
+        then:
+          - add_entries:
+              entries:
+                metric_category: "performance"
+                resource_type: "application"
+                
+    # Unit standardization
+    - if:
+        contains:
+          unit: "bytes"
+        then:
+          - convert:
+              field: "value"
+              type: "long"
+              
+    - if:
+        contains:
+          unit: "percent"
+        then:
+          - convert:
+              field: "value"
+              type: "double"
+              
+    # Aggregate metrics by time window
+    - aggregate:
+        identification_keys:
+          - "metric_name"
+          - "service"
+          - "environment"
+        aggregation:
+          - "sum"
+          - "avg"
+          - "min"
+          - "max"
+        time_window: "1m"
+        
+    # Remove empty/null values
+    - remove_entries:
+        entries:
+          - "null_field"
+          - "empty_field"
+        ignore_missing: true
+
+  sink:
+    # Primary metrics sink
+    - opensearch:
+        hosts: [ "http://opensearch:9200" ]
+        index: "metrics-%{yyyy.MM.dd}"
+        template_name: "metrics-template"
+        template_file: "/usr/share/data-prepper/templates/metrics-template.json"
+        dlq_file: "/usr/share/data-prepper/dlq/metrics-dlq"
+        max_retries: 3
+        bulk_size: 2000
+        flush_timeout: 15000
+        compression: "gzip"
+        
+    # High-frequency metrics sink
+    - if:
+        contains:
+          metric_category: "performance"
+        then:
+          - opensearch:
+              hosts: [ "http://opensearch:9200" ]
+              index: "performance-metrics-%{yyyy.MM.dd.HH}"
+              dlq_file: "/usr/share/data-prepper/dlq/perf-metrics-dlq"
+              max_retries: 5
+              bulk_size: 1000
+              flush_timeout: 10000
+              
+    # ML metrics specific sink
+    - if:
+        contains:
+          metric_category: "ml"
+        then:
+          - opensearch:
+              hosts: [ "http://opensearch:9200" ]
+              index: "ml-metrics-%{yyyy.MM.dd}"
+              dlq_file: "/usr/share/data-prepper/dlq/ml-metrics-dlq"
+              max_retries: 5

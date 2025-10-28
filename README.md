@@ -32,12 +32,12 @@ Key foundations:
 | 2 | Data Processing | Spark master/worker, streaming and batch jobs | `data-processing` | Implemented |
 | 3 | Feature Engineering | Feature engineering service, offline (MinIO) + online (Redis) feature stores, comparison utilities | `features` | Implemented |
 | 4 | ML Pipeline | MLflow tracking server, training jobs, model serving API with Redis cache | `ml-pipeline` | Implemented |
-| 5 | Orchestration | Airflow scheduler, webserver, workers | `orchestration` | In Progress |
-| 6 | Observability | Prometheus, Grafana, OpenSearch Dashboards, Data Prepper, Filebeat | `observability` | Planned |
+| 5 | Orchestration | Airflow scheduler, webserver, workers | `orchestration` | Implemented |
+| 6 | Observability | Prometheus, Grafana, OpenSearch Dashboards, Data Prepper, Filebeat | `observability` | In Progress |
 | 7 | Platform Engineering | ArgoCD, GitHub Actions runners, Istio mesh, Kubernetes, Argo Rollouts, DAST/SAST tooling | `platform` | Planned |
 | 8 | Security Testing | Metasploit, active penetration testing harness | `security` | Planned |
 
-> Levels 0-4 are production-ready today. Higher levels are tracked in the roadmap and will use the same hierarchical management model once delivered.
+> Levels 0-5 are production-ready today. Higher levels are tracked in the roadmap and will use the same hierarchical management model once delivered.
 
 ## Data Flow
 1. **Clinical Site Intake** – REST API receives validated payloads, pushes messages into IBM MQ and Kafka.

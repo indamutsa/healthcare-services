@@ -3,7 +3,7 @@
 
   System Architecture
 
-  Hierarchical 6-level pipeline where each level includes all dependencies below it:
+  Hierarchical 8-level pipeline where each level includes all dependencies below it:
 
   | Level | Name                | Key Services                                                     |
   |-------|---------------------|------------------------------------------------------------------|
@@ -12,8 +12,12 @@
   | 2     | Data Processing     | Spark (master/workers), streaming/batch jobs                     |
   | 3     | Feature Engineering | Feature stores (offline + online with Redis)                     |
   | 4     | ML Pipeline         | MLflow, ML training, model serving                               |
-  | 5     | Observability       | Airflow, Prometheus, Grafana, OpenSearch/ELK                     |
-
+  | 5     | Observability       | Prometheus, Grafana, OpenSearch/ELK                              |
+  | 6     | Monitoring          | Prometheus, Grafana, OpenSearch/ELK                              |
+  | 7     | Deployment          | Kubernetes                                                       |
+  | 8     | Scurity Pentest     | SAST, DAST                                                       |  
+  
+  
   Command Structure
 
   Two command types:

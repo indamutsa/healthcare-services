@@ -9,7 +9,7 @@ set -e
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FEATURE_ENGINEERING_DIR="${SCRIPT_DIR}/scripts/feature-engineering"
-ACTIVE_MAX_LEVEL=5
+ACTIVE_MAX_LEVEL=6
 
 # Source common utilities
 source "${SCRIPT_DIR}/scripts/common/config.sh"
@@ -29,6 +29,12 @@ source "${SCRIPT_DIR}/scripts/ml-layer/manage.sh"
 source "${SCRIPT_DIR}/scripts/ml-layer/health-checks.sh"
 source "${SCRIPT_DIR}/scripts/orchestration/manage.sh"
 source "${SCRIPT_DIR}/scripts/orchestration/health-checks.sh"
+source "${SCRIPT_DIR}/scripts/observability/manage.sh"
+source "${SCRIPT_DIR}/scripts/observability/metrics-setup.sh"
+source "${SCRIPT_DIR}/scripts/observability/health-checks.sh"
+
+# Source debug commands module
+source "${SCRIPT_DIR}/scripts/debug-monitoring/debug-final.sh"
 
 # --- Command Line Parsing ---
 
@@ -52,6 +58,7 @@ QUERY_OFFLINE_DATE=""
 RUN_QUERY_ONLINE=false
 QUERY_ONLINE_PATIENT=""
 RUN_TRAINING=false
+DEBUG_LEVEL=-1  # Default to no debug
 
 # Show usage
 show_usage() {
@@ -70,12 +77,13 @@ ${GREEN}Management Commands (Mutually Exclusive):${NC}
 
 ${GREEN}Level Selection:${NC}
   --level <N>           Target level (0-${ACTIVE_MAX_LEVEL})
-                        0 = Infrastructure
-                        1 = Data Ingestion
-                        2 = Data Processing
-                        3 = Feature Engineering
-                        4 = ML Pipeline
-                        5 = Orchestration (Airflow)
+                         0 = Infrastructure
+                         1 = Data Ingestion
+                         2 = Data Processing
+                         3 = Feature Engineering
+                         4 = ML Pipeline
+                         5 = Orchestration (Airflow)
+                         6 = Observability/Monitoring
 
 ${YELLOW}Supported Levels:${NC} Management commands currently enabled for levels 0-5
 
@@ -86,6 +94,7 @@ ${GREEN}Information Commands (Can be combined):${NC}
   -s, --summary         Show summary
   -d, --stats           Show data statistics (Level 1+)
   -v, --visualize       Show visualization
+   --debug-level N       Run debug commands (0-6, cascading levels)
 
 ${GREEN}Feature Engineering Utilities (--level 3 only):${NC}
   --compare-stores [DATE]          Compare offline (MinIO) vs online (Redis) feature stores
@@ -102,32 +111,38 @@ ${GREEN}Level-Specific Commands:${NC}
     $0 --start --level 0             Start core infrastructure stack
     $0 -vh --level 0                 Visualize and run health checks
     $0 --stop --level 0              Stop infrastructure only
+    $0 --debug-level 2 --level 0     Run resource monitoring debug
 
   Level 1 - Data Ingestion
     $0 --start -h --level 1          Start ingestion services with health checks
     $0 -sd --level 1                 Show status plus ingestion statistics
     $0 --restart-rebuild --level 1   Rebuild gateway, MQ, and processors
+    $0 --debug-level 3 --level 1     Run network analysis debug
 
   Level 2 - Data Processing
     $0 --start --level 2             Launch Spark batch + streaming jobs (auto-starts 0-1)
     $0 -vhs --level 2                Visualize, run health checks, and summary
     $0 --stop --level 2              Cascade stop for processing + lower levels
+    $0 --debug-level 4 --level 2     Run data flow analysis debug
 
   Level 3 - Feature Engineering
     $0 --start --level 3             Start feature engineering with dependencies
     $0 --compare-stores --level 3    Compare offline vs online feature stores
     $0 --monitor-feature-pipeline 2025-10-25 --level 3  Monitor pipeline for a specific date
     $0 --query-online-features PT00042 --level 3        Inspect online features for a patient
+    $0 --debug-level 5 --level 3     Run performance deep dive debug
 
   Level 4 - ML Pipeline
     $0 --start --level 4             Start MLflow + model serving (auto-starts 0-3)
     $0 --run-training --level 4      Launch a one-off training job via docker compose run
     $0 --stop --level 4              Cascade stop for ML pipeline and dependencies
+    $0 --debug-level 1 --level 4     Run service health debug
 
   Level 5 - Orchestration (Airflow)
     $0 --start --level 5             Start Airflow webserver + scheduler (auto-starts 0-4)
     $0 -vh --level 5                 Visualize and run health checks for Airflow
     $0 --stop --level 5              Cascade stop for Airflow and dependencies
+    $0 --debug-level 0 --level 5     Run basic system status debug
 
 ${YELLOW}Command Rules:${NC}
   • Only ONE management command per execution
@@ -275,6 +290,18 @@ parse_arguments() {
             --run-training)
                 RUN_TRAINING=true
                 shift
+                ;;
+            --debug-level)
+                if [ -z "$2" ]; then
+                    log_error "Please specify a debug level (0-5)"
+                    exit 1
+                fi
+                DEBUG_LEVEL=$2
+                if ! [[ "$DEBUG_LEVEL" =~ ^[0-6]$ ]]; then
+                    log_error "Invalid debug level. Must be 0-6"
+                    exit 1
+                fi
+                shift 2
                 ;;
             --level)
                 if [ -z "$2" ]; then
@@ -454,11 +481,17 @@ run_visualization_for_level() {
             echo ""
             inspect_ml_pipeline_outputs
             ;;
-        5)
+         5)
             log_info "Orchestration Visualization"
             quick_orchestration_status
             echo ""
             show_orchestration_urls
+            ;;
+         6)
+            log_info "Observability Visualization"
+            quick_observability_status
+            echo ""
+            show_observability_urls
             ;;
         *)
             log_warning "Visualization not implemented for level $level yet"
@@ -494,7 +527,7 @@ main() {
     fi
     
     # Default to summary if no action or info command
-    if [ -z "$ACTION" ] && [ "$SHOW_HEALTH" = false ] && [ "$SHOW_LOGS" = false ] && [ "$SHOW_SUMMARY" = false ] && [ "$SHOW_OPEN" = false ] && [ "$VISUALIZE" = false ]; then
+    if [ -z "$ACTION" ] && [ "$SHOW_HEALTH" = false ] && [ "$SHOW_LOGS" = false ] && [ "$SHOW_SUMMARY" = false ] && [ "$SHOW_OPEN" = false ] && [ "$VISUALIZE" = false ] && [ "$DEBUG_LEVEL" -eq -1 ]; then
         SHOW_SUMMARY=true
     fi
     
@@ -526,8 +559,11 @@ main() {
                     4)
                         start_ml_pipeline false
                         ;;
-                    5)
+                     5)
                         start_orchestration false
+                        ;;
+                     6)
+                        start_observability false
                         ;;
                 esac
             done
@@ -535,8 +571,8 @@ main() {
         stop)
             # Get all levels to stop (target level + dependencies for cascading levels)
             local stop_levels=()
-            if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 1 ] || [ "$TARGET_LEVEL" -eq 3 ]; then
-                # Levels 0, 1, 3: stop only the target level (no cascading)
+            if [ "$TARGET_LEVEL" -eq 0 ] || [ "$TARGET_LEVEL" -eq 1 ] || [ "$TARGET_LEVEL" -eq 3 ] || [ "$TARGET_LEVEL" -eq 6 ]; then
+                # Levels 0, 1, 3, 6: stop only the target level (no cascading)
                 stop_levels=("$TARGET_LEVEL")
             else
                 # Levels 2, 4, 5: cascade stop to dependencies
@@ -565,8 +601,11 @@ main() {
                     4)
                         stop_ml_pipeline true false  # Remove containers AND volumes, no cascade
                         ;;
-                    5)
+                     5)
                         stop_orchestration true false  # Remove containers AND volumes, no cascade
+                        ;;
+                     6)
+                        stop_observability true false  # Remove containers AND volumes, no cascade
                         ;;
                 esac
             done
@@ -588,8 +627,11 @@ main() {
                 4)
                     rebuild_ml_pipeline
                     ;;
-                5)
+                 5)
                     rebuild_orchestration
+                    ;;
+                 6)
+                    rebuild_observability
                     ;;
             esac
             ;;
@@ -824,7 +866,14 @@ main() {
             log_info "Following logs for Levels ${log_levels[*]}..."
             docker compose logs -f "${services[@]}"
         fi
-    fi
+        fi
+
+        # Execute debug commands
+        if [ "$DEBUG_LEVEL" -ne -1 ]; then
+            echo ""
+            log_info "Running debug commands (Level $DEBUG_LEVEL)..."
+            run_debug_commands "$DEBUG_LEVEL"
+        fi
     fi
 
     # Show next steps
@@ -835,6 +884,7 @@ main() {
         echo "  • Health check:  $0 -h --level $TARGET_LEVEL"
         echo "  • View logs:     $0 -l --level $TARGET_LEVEL"
         echo "  • Visualize:     $0 -v --level $TARGET_LEVEL"
+        echo "  • Debug:         $0 --debug-level 2 --level $TARGET_LEVEL"
         echo ""
     fi
 

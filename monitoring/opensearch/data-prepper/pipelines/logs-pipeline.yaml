@@ -1,0 +1,125 @@
+log-pipeline:
+  source:
+    http:
+      port: 2021
+      ssl: false
+      max_connection_count: 32
+      request_timeout: 60000
+      thread_pool:
+        core_pool_size: 4
+        max_pool_size: 8
+        keep_alive_time: 60000
+        queue_size: 1024
+      
+  processor:
+    # Extract Docker container metadata
+    - docker:
+        source: "container"
+        
+    # Parse common log formats
+    - grok:
+        match:
+          log: [ 
+            "%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}",
+            "%{COMBINEDAPACHELOG:apache_access}",
+            "%{COMMONAPACHELOG:apache_common}",
+            "%{NGINXACCESS:nginx_access}"
+          ]
+        ignore_missing: true
+        
+    # Parse JSON messages
+    - parse_json:
+        source: "message"
+        destination: "parsed"
+        ignore_failure: true
+        
+    # Timestamp processing
+    - date:
+        from_time_received: true
+        destination: "@timestamp"
+        match_formats:
+          - "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+          - "yyyy-MM-dd'T'HH:mm:ss'Z'"
+          - "yyyy-MM-dd HH:mm:ss"
+          
+    # Add environment metadata
+    - add_entries:
+        entries:
+          environment: "development"
+          cluster: "clinical-mlops"
+          pipeline_type: "logs"
+          processed_at: "@timestamp"
+          
+    # Filter and enhance clinical logs
+    - if:
+        contains:
+          container_name: "clinical"
+        then:
+          - add_entries:
+              entries:
+                service_type: "clinical"
+                data_type: "clinical_logs"
+                
+    # Filter ML-related logs
+    - if:
+        contains:
+          container_name: "model"
+        then:
+          - add_entries:
+              entries:
+                service_type: "ml"
+                data_type: "model_logs"
+                
+    # Remove sensitive data
+    - remove_entries:
+        entries:
+          - "password"
+          - "token"
+          - "api_key"
+          - "secret"
+        ignore_missing: true
+        
+    # Add log level categorization
+    - if:
+        contains:
+          level: "ERROR"
+        then:
+          - add_entries:
+              entries:
+                severity: "critical"
+        else:
+          - if:
+              contains:
+                level: "WARN"
+              then:
+                - add_entries:
+                    entries:
+                      severity: "warning"
+              else:
+                - add_entries:
+                    entries:
+                      severity: "info"
+
+  sink:
+    # Primary sink to OpenSearch
+    - opensearch:
+        hosts: [ "http://opensearch:9200" ]
+        index: "logs-%{yyyy.MM.dd}"
+        template_name: "logs-template"
+        template_file: "/usr/share/data-prepper/templates/logs-template.json"
+        dlq_file: "/usr/share/data-prepper/dlq/logs-dlq"
+        max_retries: 3
+        bulk_size: 1000
+        flush_timeout: 30000
+        compression: "gzip"
+        
+    # Secondary sink for critical logs
+    - if:
+        contains:
+          severity: "critical"
+        then:
+          - opensearch:
+              hosts: [ "http://opensearch:9200" ]
+              index: "critical-logs-%{yyyy.MM.dd}"
+              dlq_file: "/usr/share/data-prepper/dlq/critical-logs-dlq"
+              max_retries: 5

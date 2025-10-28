@@ -1,0 +1,23 @@
+cluster.name: "clinical-mlops"
+node.name: "opensearch-node-1"
+path.data: /usr/share/opensearch/data
+path.logs: /usr/share/opensearch/logs
+network.host: 0.0.0.0
+http.port: 9200
+discovery.type: single-node
+plugins.security.disabled: true
+
+# Admin password for OpenSearch 2.14.0+
+plugins.security.authcz.admin_dn:
+  - CN=admin,OU=SSL,O=Test,L=Test,C=DE
+
+# Performance settings
+thread_pool.write.queue_size: 1000
+thread_pool.search.queue_size: 1000
+
+# Index settings
+indices.memory.index_buffer_size: 10%
+indices.queries.cache.size: 10%
+
+# Logging
+logger.level: INFO

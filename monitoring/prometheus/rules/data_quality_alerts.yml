@@ -1,0 +1,82 @@
+groups:
+  - name: data_quality
+    rules:
+      - alert: DataValidationErrorRate
+        expr: rate(data_validation_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: data-quality
+        annotations:
+          summary: "High data validation error rate"
+          description: "Data validation error rate is {{ $value }} errors/second"
+
+      - alert: MissingDataThresholdExceeded
+        expr: data_missing_percentage > 15
+        for: 10m
+        labels:
+          severity: warning
+          service: data-quality
+        annotations:
+          summary: "Missing data threshold exceeded"
+          description: "Missing data percentage is {{ $value }}%, above threshold of 15%"
+
+      - alert: DataSchemaMismatch
+        expr: data_schema_mismatches_total > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: data-quality
+        annotations:
+          summary: "Data schema mismatch detected"
+          description: "{{ $value }} schema mismatches detected in data ingestion"
+
+      - alert: DuplicateDataDetected
+        expr: rate(duplicate_records_detected_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: data-quality
+        annotations:
+          summary: "Duplicate data detected"
+          description: "Duplicate record rate is {{ $value }} records/second"
+
+      - alert: DataFreshnessIssue
+        expr: data_freshness_seconds > 3600
+        for: 15m
+        labels:
+          severity: warning
+          service: data-quality
+        annotations:
+          summary: "Data freshness issue"
+          description: "Data freshness is {{ $value }} seconds old, above threshold of 1 hour"
+
+      - alert: OutlierDataDetection
+        expr: outlier_data_points_rate > 0.02
+        for: 5m
+        labels:
+          severity: info
+          service: data-quality
+        annotations:
+          summary: "Outlier data detected"
+          description: "Outlier detection rate is {{ $value }} for {{ $labels.data_source }}"
+
+      - alert: DataProcessingLatencyHigh
+        expr: data_processing_latency_seconds > 900
+        for: 10m
+        labels:
+          severity: warning
+          service: data-quality
+        annotations:
+          summary: "High data processing latency"
+          description: "Processing latency is {{ $value }} seconds for {{ $labels.pipeline_stage }}"
+
+      - alert: DataIntegrityCheckFailed
+        expr: data_integrity_checks_failed_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: data-quality
+        annotations:
+          summary: "Data integrity check failed"
+          description: "{{ $value }} integrity checks failed for {{ $labels.data_set }}"
