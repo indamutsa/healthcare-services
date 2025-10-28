@@ -1,0 +1,41 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: mlflow
+  namespace: clinical-mlops
+spec:
+  hosts:
+  - "mlflow.clinical-mlops.local"
+  gateways:
+  - clinical-mlops-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: mlflow
+        port:
+          number: 5000
+    timeout: 30s
+    corsPolicy:
+      allowOrigins:
+      - exact: "https://mlflow.clinical-mlops.local"
+      - exact: "http://localhost:3000"
+      allowMethods:
+      - POST
+      - GET
+      - OPTIONS
+      - PUT
+      - DELETE
+      allowHeaders:
+      - authorization
+      - content-type
+      - accept
+      - origin
+      - user-agent
+      - dnt
+      - cache-control
+      - x-mx-reqtoken
+      - accept-encoding
+      maxAge: 24h

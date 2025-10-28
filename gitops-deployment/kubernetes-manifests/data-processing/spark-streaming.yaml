@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-streaming
+  namespace: clinical-mlops
+  labels:
+    app: spark-streaming
+    tier: data-processing
+    layer: level2
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spark-streaming
+  template:
+    metadata:
+      labels:
+        app: spark-streaming
+        tier: data-processing
+        layer: level2
+    spec:
+      containers:
+      - name: spark-streaming
+        image: spark-streaming:latest
+        env:
+        - name: SPARK_MASTER
+          value: "spark://spark-master:7077"
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-broker:9092"
+        - name: S3_ENDPOINT
+          value: "http://minio:9000"
+        - name: S3_BUCKET_BRONZE
+          value: "clinical-data-bronze"
+        - name: S3_BUCKET_SILVER
+          value: "clinical-data-silver"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep spark | grep streaming || exit 1"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "netstat -tulpn | grep :7077 || exit 1"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-streaming
+  namespace: clinical-mlops
+  labels:
+    app: spark-streaming
+    tier: data-processing
+    layer: level2
+spec:
+  selector:
+    app: spark-streaming
+  ports:
+  - port: 7077
+    targetPort: 7077
+    protocol: TCP
+  type: ClusterIP

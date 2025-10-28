@@ -1,0 +1,269 @@
+# ArgoCD Projects for Multi-Environment Management with RBAC
+
+---
+# Development Project
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: clinical-mlops-dev
+  namespace: argocd
+spec:
+  description: Development environment for Clinical MLOps Platform
+
+  # Source repositories
+  sourceRepos:
+  - 'https://github.com/*/clinical-trials-service.git'
+  - 'ghcr.io/clinical-trials-service/*'
+
+  # Allowed destinations
+  destinations:
+  - namespace: clinical-mlops-dev
+    server: 'https://kubernetes.default.svc'
+  - namespace: clinical-mlops-dev-*
+    server: 'https://kubernetes.default.svc'
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: ''
+    kind: PersistentVolume
+
+  # Namespace resource whitelist (unrestricted for dev)
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+
+  # Sync windows
+  syncWindows:
+  - kind: allow
+    schedule: '* * * * *'  # Always allowed
+    duration: 24h
+    applications:
+    - '*'
+
+  # Roles for RBAC
+  roles:
+  - name: developer
+    description: Full access for developers
+    policies:
+    - p, proj:clinical-mlops-dev:developer, applications, *, clinical-mlops-dev/*, allow
+    - p, proj:clinical-mlops-dev:developer, exec, create, clinical-mlops-dev/*, allow
+    groups:
+    - developers
+    - engineering
+
+  - name: viewer
+    description: Read-only access
+    policies:
+    - p, proj:clinical-mlops-dev:viewer, applications, get, clinical-mlops-dev/*, allow
+    - p, proj:clinical-mlops-dev:viewer, logs, get, clinical-mlops-dev/*, allow
+    groups:
+    - viewers
+
+---
+# Staging Project
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: clinical-mlops-staging
+  namespace: argocd
+spec:
+  description: Staging environment for Clinical MLOps Platform
+
+  sourceRepos:
+  - 'https://github.com/*/clinical-trials-service.git'
+  - 'ghcr.io/clinical-trials-service/*'
+
+  destinations:
+  - namespace: clinical-mlops-staging
+    server: 'https://kubernetes.default.svc'
+
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+
+  namespaceResourceWhitelist:
+  - group: 'apps'
+    kind: Deployment
+  - group: 'apps'
+    kind: StatefulSet
+  - group: ''
+    kind: Service
+  - group: ''
+    kind: ConfigMap
+  - group: ''
+    kind: Secret
+  - group: ''
+    kind: PersistentVolumeClaim
+  - group: 'batch'
+    kind: Job
+  - group: 'batch'
+    kind: CronJob
+  - group: 'networking.k8s.io'
+    kind: Ingress
+  - group: 'autoscaling'
+    kind: HorizontalPodAutoscaler
+  - group: 'policy'
+    kind: PodDisruptionBudget
+
+  syncWindows:
+  - kind: allow
+    schedule: '0 9-17 * * 1-5'  # Weekdays 9-5
+    duration: 8h
+    applications:
+    - '*'
+
+  roles:
+  - name: deployer
+    description: Can sync and deploy applications
+    policies:
+    - p, proj:clinical-mlops-staging:deployer, applications, sync, clinical-mlops-staging/*, allow
+    - p, proj:clinical-mlops-staging:deployer, applications, get, clinical-mlops-staging/*, allow
+    groups:
+    - deployers
+    - sre-team
+
+  - name: viewer
+    description: Read-only access
+    policies:
+    - p, proj:clinical-mlops-staging:viewer, applications, get, clinical-mlops-staging/*, allow
+    - p, proj:clinical-mlops-staging:viewer, logs, get, clinical-mlops-staging/*, allow
+    groups:
+    - viewers
+    - qa-team
+
+---
+# Production Project
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: clinical-mlops-production
+  namespace: argocd
+spec:
+  description: Production environment for Clinical MLOps Platform (HIPAA-compliant)
+
+  sourceRepos:
+  - 'https://github.com/your-org/clinical-trials-service.git'  # Only specific repo
+  - 'ghcr.io/clinical-trials-service/*'
+
+  destinations:
+  - namespace: clinical-mlops-production
+    server: 'https://kubernetes.default.svc'
+
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+
+  namespaceResourceWhitelist:
+  - group: 'apps'
+    kind: Deployment
+  - group: 'apps'
+    kind: StatefulSet
+  - group: ''
+    kind: Service
+  - group: ''
+    kind: ConfigMap
+  - group: ''
+    kind: Secret
+  - group: ''
+    kind: PersistentVolumeClaim
+  - group: 'batch'
+    kind: Job
+  - group: 'batch'
+    kind: CronJob
+  - group: 'networking.k8s.io'
+    kind: Ingress
+  - group: 'networking.k8s.io'
+    kind: NetworkPolicy
+  - group: 'autoscaling'
+    kind: HorizontalPodAutoscaler
+  - group: 'policy'
+    kind: PodDisruptionBudget
+  - group: 'argoproj.io'
+    kind: Rollout
+
+  # Orphaned resources - do not delete on prune
+  orphanedResources:
+    warn: true
+
+  # Sync windows - restricted to maintenance windows
+  syncWindows:
+  - kind: allow
+    schedule: '0 2-4 * * 0,6'  # Weekends 2-4 AM (maintenance window)
+    duration: 2h
+    applications:
+    - '*'
+    manualSync: true
+
+  - kind: deny
+    schedule: '0 0-23 * * 1-5'  # Weekdays - manual approval required
+    duration: 24h
+    applications:
+    - '*'
+
+  roles:
+  - name: platform-admin
+    description: Full control for platform admins (break-glass)
+    policies:
+    - p, proj:clinical-mlops-production:platform-admin, applications, *, clinical-mlops-production/*, allow
+    - p, proj:clinical-mlops-production:platform-admin, exec, create, clinical-mlops-production/*, allow
+    groups:
+    - platform-admins
+
+  - name: deployer
+    description: Can deploy with approval
+    policies:
+    - p, proj:clinical-mlops-production:deployer, applications, sync, clinical-mlops-production/*, allow
+    - p, proj:clinical-mlops-production:deployer, applications, get, clinical-mlops-production/*, allow
+    groups:
+    - sre-leads
+    - release-managers
+
+  - name: viewer
+    description: Read-only production access
+    policies:
+    - p, proj:clinical-mlops-production:viewer, applications, get, clinical-mlops-production/*, allow
+    - p, proj:clinical-mlops-production:viewer, logs, get, clinical-mlops-production/*, allow
+    groups:
+    - sre-team
+    - engineering
+    - compliance-team
+
+---
+# ArgoCD RBAC ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    # Default deny-all policy
+    p, role:none, *, *, */*, deny
+
+    # Platform Admins - Full Access
+    g, platform-admins, role:admin
+
+    # SRE Team - Production viewer + staging deployer
+    g, sre-team, proj:clinical-mlops-staging:deployer
+    g, sre-team, proj:clinical-mlops-production:viewer
+
+    # Developers - Dev full access + staging viewer
+    g, developers, proj:clinical-mlops-dev:developer
+    g, developers, proj:clinical-mlops-staging:viewer
+
+    # Release Managers - Production deployer
+    g, release-managers, proj:clinical-mlops-production:deployer
+
+    # QA Team - Staging viewer
+    g, qa-team, proj:clinical-mlops-staging:viewer
+
+    # Compliance Team - Production viewer (audit)
+    g, compliance-team, proj:clinical-mlops-production:viewer
+
+    # Viewers - Read-only everywhere
+    g, viewers, role:readonly
+
+  scopes: '[groups, email]'

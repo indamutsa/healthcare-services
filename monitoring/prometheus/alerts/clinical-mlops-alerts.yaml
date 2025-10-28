@@ -1,0 +1,242 @@
+groups:
+  - name: clinical-mlops.rules
+    rules:
+      # High CPU Usage Alerts
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{container!=""}[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High CPU usage on pod {{ $labels.pod }}"
+          description: "CPU usage is above 80% for more than 5 minutes on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}"
+
+      - alert: CriticalCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{container!=""}[5m]) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Critical CPU usage on pod {{ $labels.pod }}"
+          description: "CPU usage is above 95% for more than 2 minutes on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}"
+
+      # High Memory Usage Alerts
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes{container!=""} / container_spec_memory_limit_bytes) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High memory usage on pod {{ $labels.pod }}"
+          description: "Memory usage is above 80% for more than 5 minutes on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}"
+
+      - alert: CriticalMemoryUsage
+        expr: (container_memory_usage_bytes{container!=""} / container_spec_memory_limit_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Critical memory usage on pod {{ $labels.pod }}"
+          description: "Memory usage is above 95% for more than 2 minutes on pod {{ $labels.pod }} in namespace {{ $labels.namespace }}"
+
+      # Application-Specific Alerts
+      - alert: ClinicalGatewayDown
+        expr: up{job="clinical-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: clinical-data
+        annotations:
+          summary: "Clinical Gateway is down"
+          description: "Clinical Gateway has been down for more than 1 minute"
+
+      - alert: ModelServingDown
+        expr: up{job="model-serving"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ml-team
+        annotations:
+          summary: "Model Serving is down"
+          description: "Model Serving has been down for more than 1 minute"
+
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_total{status=~"5.."}[5m]) / rate(http_server_requests_total[5m]) * 100 > 5
+        for: 3m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for more than 3 minutes on service {{ $labels.service }}"
+
+      - alert: CriticalErrorRate
+        expr: rate(http_server_requests_total{status=~"5.."}[5m]) / rate(http_server_requests_total[5m]) * 100 > 15
+        for: 1m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is above 15% for more than 1 minute on service {{ $labels.service }}"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_server_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High latency detected"
+          description: "95th percentile latency is above 1 second for service {{ $labels.service }}"
+
+      # Database Alerts
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: database
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL database has been down for more than 1 minute"
+
+      - alert: DatabaseConnectionHigh
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+        annotations:
+          summary: "High database connections"
+          description: "Database has more than 80 active connections"
+
+      # Storage Alerts
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 10% on node {{ $labels.instance }}"
+
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Critical disk space"
+          description: "Disk space is below 5% on node {{ $labels.instance }}"
+
+      # Kafka Alerts
+      - alert: KafkaDown
+        expr: up{job="kafka"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: data-engineering
+        annotations:
+          summary: "Kafka is down"
+          description: "Kafka broker has been down for more than 1 minute"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_lag_sum > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: data-engineering
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Kafka consumer lag is above 1000 messages for consumer group {{ $labels.consumer_group }}"
+
+      # Redis Alerts
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: data-engineering
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: data-engineering
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is above 80%"
+
+      # ML Pipeline Alerts
+      - alert: ModelTrainingFailed
+        expr: mlflow_run_failed == 1
+        for: 1m
+        labels:
+          severity: warning
+          team: ml-team
+        annotations:
+          summary: "Model training failed"
+          description: "Model training run {{ $labels.run_id }} has failed"
+
+      - alert: ModelTrainingStalled
+        expr: time() - mlflow_run_start_timestamp > 3600
+        for: 30m
+        labels:
+          severity: warning
+          team: ml-team
+        annotations:
+          summary: "Model training stalled"
+          description: "Model training run {{ $labels.run_id }} has been running for more than 1 hour"
+
+      # Airflow Alerts
+      - alert: AirflowDown
+        expr: up{job="airflow"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: data-engineering
+        annotations:
+          summary: "Airflow is down"
+          description: "Airflow has been down for more than 1 minute"
+
+      - alert: AirflowDagFailure
+        expr: airflow_dag_status{status="failed"} > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: data-engineering
+        annotations:
+          summary: "Airflow DAG failed"
+          description: "DAG {{ $labels.dag_id }} has failed tasks"
+
+      # Pod Status Alerts
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
+
+      - alert: PodNotReady
+        expr: kube_pod_status_ready{condition="true"} == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "Pod is not ready"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is not ready"

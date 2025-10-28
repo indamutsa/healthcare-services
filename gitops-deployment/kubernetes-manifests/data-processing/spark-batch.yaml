@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spark-batch-processing
+  namespace: clinical-mlops
+  labels:
+    app: spark-batch
+    tier: data-processing
+    layer: level2
+spec:
+  schedule: "0 2 * * *"  # Run daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: spark-batch
+            tier: data-processing
+            layer: level2
+        spec:
+          containers:
+          - name: spark-batch
+            image: spark-batch:latest
+            env:
+            - name: SPARK_MASTER
+              value: "spark://spark-master:7077"
+            - name: S3_ENDPOINT
+              value: "http://minio:9000"
+            - name: S3_BUCKET_SILVER
+              value: "clinical-data-silver"
+            - name: S3_BUCKET_GOLD
+              value: "clinical-data-gold"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1"
+              limits:
+                memory: "4Gi"
+                cpu: "2"
+          restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master
+  namespace: clinical-mlops
+  labels:
+    app: spark-master
+    tier: data-processing
+    layer: level2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-master
+  template:
+    metadata:
+      labels:
+        app: spark-master
+        tier: data-processing
+        layer: level2
+    spec:
+      containers:
+      - name: spark-master
+        image: bitnami/spark:3.4
+        env:
+        - name: SPARK_MODE
+          value: "master"
+        - name: SPARK_RPC_AUTHENTICATION_ENABLED
+          value: "no"
+        - name: SPARK_RPC_ENCRYPTION_ENABLED
+          value: "no"
+        - name: SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED
+          value: "no"
+        - name: SPARK_SSL_ENABLED
+          value: "no"
+        ports:
+        - containerPort: 7077
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  namespace: clinical-mlops
+  labels:
+    app: spark-master
+    tier: data-processing
+    layer: level2
+spec:
+  selector:
+    app: spark-master
+  ports:
+  - name: master
+    port: 7077
+    targetPort: 7077
+  - name: webui
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

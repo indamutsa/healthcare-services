@@ -1,0 +1,290 @@
+# Airflow with MinIO S3 Remote Logging
+# Stores task logs in MinIO instead of PVC for scalability and long-term retention
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+data:
+  airflow.cfg: |
+    [core]
+    dags_folder = /opt/airflow/dags
+    executor = KubernetesExecutor
+    load_examples = False
+    remote_logging = True
+
+    [logging]
+    # Enable remote logging to S3 (MinIO)
+    remote_logging = True
+    remote_base_log_folder = s3://airflow-logs
+    remote_log_conn_id = minio_s3
+    encrypt_s3_logs = False
+
+    [kubernetes]
+    namespace = clinical-mlops
+    worker_container_repository = apache/airflow
+    worker_container_tag = 2.8.0
+    delete_worker_pods = True
+    delete_worker_pods_on_failure = False
+
+    [webserver]
+    base_url = http://airflow-webserver:8080
+    expose_config = True
+
+    [scheduler]
+    scheduler_heartbeat_sec = 5
+
+---
+# Airflow Connection for MinIO S3
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-s3-connection
+  namespace: clinical-mlops
+type: Opaque
+stringData:
+  # Connection in Airflow URI format
+  minio_s3: |
+    {
+      "conn_type": "s3",
+      "host": "http://minio:9000",
+      "schema": "",
+      "login": "admin",
+      "password": "changeme123!",
+      "port": null,
+      "extra": {
+        "aws_access_key_id": "admin",
+        "aws_secret_access_key": "changeme123!",
+        "host": "http://minio:9000",
+        "region_name": "us-east-1"
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    component: webserver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: airflow
+      component: webserver
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: webserver
+    spec:
+      initContainers:
+      # Initialize Airflow database
+      - name: init-db
+        image: apache/airflow:2.8.0-python3.11
+        command:
+        - bash
+        - -c
+        - |
+          airflow db init || airflow db upgrade
+          airflow connections create-default-connections || true
+        env:
+        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: postgres-airflow-credentials
+              key: connection-string
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: "KubernetesExecutor"
+
+      containers:
+      - name: webserver
+        image: apache/airflow:2.8.0-python3.11
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Database connection
+        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: postgres-airflow-credentials
+              key: connection-string
+
+        # MinIO S3 configuration for remote logging
+        - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+          value: "True"
+        - name: AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER
+          value: "s3://airflow-logs"
+        - name: AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID
+          value: "minio_s3"
+
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        - name: AWS_ENDPOINT_URL
+          value: "http://minio:9000"
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+
+        # Executor
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: "KubernetesExecutor"
+
+        command:
+        - airflow
+        - webserver
+
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+
+        volumeMounts:
+        - name: dags
+          mountPath: /opt/airflow/dags
+        - name: airflow-config
+          mountPath: /opt/airflow/airflow.cfg
+          subPath: airflow.cfg
+
+      volumes:
+      - name: dags
+        configMap:
+          name: airflow-dags
+      - name: airflow-config
+        configMap:
+          name: airflow-config
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: apache/airflow:2.8.0-python3.11
+        env:
+        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: postgres-airflow-credentials
+              key: connection-string
+
+        # S3 logging configuration
+        - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+          value: "True"
+        - name: AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER
+          value: "s3://airflow-logs"
+        - name: AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID
+          value: "minio_s3"
+
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        - name: AWS_ENDPOINT_URL
+          value: "http://minio:9000"
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: "KubernetesExecutor"
+
+        command:
+        - airflow
+        - scheduler
+
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+
+        volumeMounts:
+        - name: dags
+          mountPath: /opt/airflow/dags
+        - name: airflow-config
+          mountPath: /opt/airflow/airflow.cfg
+          subPath: airflow.cfg
+
+      volumes:
+      - name: dags
+        configMap:
+          name: airflow-dags
+      - name: airflow-config
+        configMap:
+          name: airflow-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    component: webserver
+spec:
+  selector:
+    app: airflow
+    component: webserver
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP

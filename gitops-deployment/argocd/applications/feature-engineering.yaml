@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: feature-engineering
+  namespace: argocd
+spec:
+  project: clinical-mlops
+  source:
+    repoURL: https://github.com/your-org/clinical-trials-service.git
+    targetRevision: main
+    path: gitops-deployment/kubernetes-manifests/feature-engineering
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clinical-mlops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+  info:
+    - name: description
+      value: "Level 3 - Feature Engineering layer (Feature store, feature computation)"

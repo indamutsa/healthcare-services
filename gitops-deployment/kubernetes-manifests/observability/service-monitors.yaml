@@ -1,0 +1,172 @@
+# ServiceMonitors for Prometheus Metrics Collection
+# Automatically discovers and scrapes metrics from services
+
+---
+# Clinical Data Gateway ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: clinical-gateway-metrics
+  namespace: clinical-mlops
+  labels:
+    app: clinical-data-gateway
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: clinical-data-gateway
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# Model Serving ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: model-serving-metrics
+  namespace: clinical-mlops
+  labels:
+    app: model-serving
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: model-serving
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+
+---
+# Feature Engineering ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: feature-engineering-metrics
+  namespace: clinical-mlops
+  labels:
+    app: feature-engineering
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: feature-engineering
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+
+---
+# MLflow ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mlflow-metrics
+  namespace: clinical-mlops
+  labels:
+    app: mlflow
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: mlflow
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 60s
+
+---
+# Airflow ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: airflow-metrics
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: airflow
+  endpoints:
+  - port: metrics
+    path: /admin/metrics
+    interval: 30s
+
+---
+# PostgreSQL Exporter ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-metrics
+  namespace: clinical-mlops
+  labels:
+    app: postgres
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+
+---
+# Redis Exporter ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-metrics
+  namespace: clinical-mlops
+  labels:
+    app: redis
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: redis-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+
+---
+# Kafka Exporter ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kafka-metrics
+  namespace: clinical-mlops
+  labels:
+    app: kafka
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: kafka-exporter
+  endpoints:
+  - port: metrics
+    interval: 30s
+
+---
+# MinIO ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio-metrics
+  namespace: clinical-mlops
+  labels:
+    app: minio
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: minio
+  endpoints:
+  - port: api
+    path: /minio/v2/metrics/cluster
+    interval: 30s

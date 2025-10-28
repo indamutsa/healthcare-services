@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: clinical-mlops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        command:
+        - /bin/sh
+        - -c
+        - |
+          minio server /data --console-address ':9001' --address ':9000'
+        ports:
+        - containerPort: 9000
+        - containerPort: 9001
+        volumeMounts:
+        - name: minio-data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - mc ready local
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: minio-data
+        persistentVolumeClaim:
+          claimName: minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: clinical-mlops
+spec:
+  selector:
+    app: minio
+  ports:
+  - name: api
+    port: 9000
+    targetPort: 9000
+  - name: console
+    port: 9001
+    targetPort: 9001
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: clinical-mlops
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-setup
+  namespace: clinical-mlops
+spec:
+  template:
+    spec:
+      containers:
+      - name: minio-setup
+        image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo '⏳ Waiting for MinIO to become ready...'
+          until mc alias set myminio http://minio:9000 minioadmin minioadmin 2>/dev/null; do
+            echo 'Waiting for MinIO...'
+            sleep 2
+          done
+          echo '🔧 Configuring MinIO client (mc)...'
+          mc alias set myminio http://minio:9000 minioadmin minioadmin
+          echo '📦 Creating buckets...'
+          mc mb myminio/clinical-mlops --ignore-existing
+          mc mb myminio/mlflow-artifacts --ignore-existing
+          mc mb myminio/dvc-storage --ignore-existing
+          echo '🌍 Applying anonymous download policies...'
+          mc anonymous set download myminio/clinical-mlops
+          mc anonymous set download myminio/mlflow-artifacts
+          mc anonymous set download myminio/dvc-storage
+          echo '✅ Buckets successfully configured:'
+          mc ls myminio/
+      restartPolicy: Never

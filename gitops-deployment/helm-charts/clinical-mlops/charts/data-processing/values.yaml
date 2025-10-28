@@ -1,0 +1,37 @@
+# Spark Streaming
+sparkStreaming:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: spark-streaming
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+# Spark Batch
+sparkBatch:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: spark-batch
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2
+      memory: 4Gi
+
+# Service Monitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics

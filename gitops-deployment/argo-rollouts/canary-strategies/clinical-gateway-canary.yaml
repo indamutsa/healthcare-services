@@ -1,0 +1,164 @@
+# Canary Deployment Strategy for Clinical Data Gateway
+# This implements a 10%/90% canary deployment with progressive traffic shifting
+
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: clinical-gateway
+  namespace: data-ingestion
+  labels:
+    app: clinical-gateway
+    version: canary
+spec:
+  # Replica configuration
+  replicas: 3
+  
+  # Selector for pods
+  selector:
+    matchLabels:
+      app: clinical-gateway
+  
+  # Template for pods
+  template:
+    metadata:
+      labels:
+        app: clinical-gateway
+    spec:
+      containers:
+      - name: clinical-gateway
+        image: clinical-gateway:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "production"
+        - name: SERVER_PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  
+  # Canary deployment strategy
+  strategy:
+    canary:
+      # Canary service (10% traffic)
+      canaryService: clinical-gateway-canary
+      
+      # Stable service (90% traffic)
+      stableService: clinical-gateway
+      
+      # Traffic routing with Istio
+      trafficRouting:
+        istio:
+          virtualService:
+            name: clinical-gateway-vs
+            routes:
+            - primary
+        
+      # Step-by-step rollout
+      steps:
+      # Step 1: Initial 10% traffic to canary
+      - setWeight: 10
+        
+      # Step 2: Pause for 15 minutes to monitor
+      - pause:
+          duration: 15m
+          
+      # Step 3: Analysis to check metrics
+      - analysis:
+          templates:
+          - templateName: success-rate-check
+          args:
+          - name: service-name
+            value: clinical-gateway-canary
+          - name: namespace
+            value: data-ingestion
+          - name: threshold
+            value: "0.95"  # 95% success rate required
+          
+      # Step 4: Increase to 50% traffic
+      - setWeight: 50
+        
+      # Step 5: Pause for 10 minutes
+      - pause:
+          duration: 10m
+          
+      # Step 6: Analysis for performance metrics
+      - analysis:
+          templates:
+          - templateName: performance-check
+          args:
+          - name: service-name
+            value: clinical-gateway-canary
+          - name: namespace
+            value: data-ingestion
+          - name: response-time-threshold
+            value: "500"  # 500ms max response time
+          
+      # Step 7: Full rollout to 100%
+      - setWeight: 100
+
+---
+# Analysis Template for Success Rate
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate-check
+  namespace: data-ingestion
+spec:
+  metrics:
+  - name: success-rate
+    interval: 30s
+    # Prometheus query for success rate
+    provider:
+      prometheus:
+        address: http://prometheus.observability:9090
+        query: |
+          sum(rate(http_requests_total{service="{{args.service-name}}", status=~"2.."}[5m])) 
+          / 
+          sum(rate(http_requests_total{service="{{args.service-name}}"}[5m]))
+    # Success condition: success rate > threshold
+    successCondition: result > {{args.threshold}}
+    # Failure condition: success rate < 0.8
+    failureCondition: result < 0.8
+
+---
+# Analysis Template for Performance
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: performance-check
+  namespace: data-ingestion
+spec:
+  metrics:
+  - name: response-time
+    interval: 30s
+    # Prometheus query for response time
+    provider:
+      prometheus:
+        address: http://prometheus.observability:9090
+        query: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{service="{{args.service-name}}"}[5m])) 
+            by (le)
+          )
+    # Success condition: response time < threshold
+    successCondition: result < {{args.response-time-threshold}}
+    # Failure condition: response time > 1000ms
+    failureCondition: result > 1000

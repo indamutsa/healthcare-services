@@ -1,0 +1,247 @@
+# Model Serving with MinIO S3 Model Storage
+# Loads trained models from MinIO instead of local storage
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-serving
+  namespace: clinical-mlops
+  labels:
+    app: model-serving
+    tier: ml-pipeline
+    layer: level4
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: model-serving
+  template:
+    metadata:
+      labels:
+        app: model-serving
+        tier: ml-pipeline
+        layer: level4
+        version: v1
+    spec:
+      initContainers:
+      # Download model from MinIO on startup
+      - name: download-model
+        image: minio/mc:latest
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Configuring MinIO client..."
+          mc alias set minio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
+
+          echo "Downloading latest model..."
+          mc mirror minio/model-artifacts/production/latest /models/
+
+          echo "Model downloaded successfully"
+          ls -lh /models/
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
+
+      containers:
+      - name: model-serving
+        image: ghcr.io/clinical-trials-service/clinical-mlops/model-serving:v1.0.0
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        # MLflow tracking
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow:5000"
+
+        # MinIO S3 configuration for model artifacts
+        - name: MODEL_STORAGE_TYPE
+          value: "s3"
+
+        - name: MODEL_BUCKET
+          value: "model-artifacts"
+
+        - name: S3_ENDPOINT
+          value: "http://minio:9000"
+
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+
+        # Local model cache
+        - name: MODEL_CACHE_DIR
+          value: "/models"
+
+        # Redis for prediction caching
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: connection-string
+
+        - name: CACHE_TTL_SECONDS
+          value: "300"
+
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
+
+      volumes:
+      # EmptyDir for ephemeral model cache (loaded from S3 on startup)
+      - name: model-cache
+        emptyDir:
+          sizeLimit: 10Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-serving
+  namespace: clinical-mlops
+  labels:
+    app: model-serving
+    tier: ml-pipeline
+    layer: level4
+spec:
+  selector:
+    app: model-serving
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  type: ClusterIP
+
+---
+# HorizontalPodAutoscaler for model serving
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: model-serving-hpa
+  namespace: clinical-mlops
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: model-serving
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# Model update CronJob - Syncs models from MinIO every hour
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-sync
+  namespace: clinical-mlops
+spec:
+  schedule: "*/60 * * * *"  # Every hour
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: sync-models
+            image: minio/mc:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Syncing latest models from MinIO..."
+              mc alias set minio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
+
+              # Check for new model versions
+              mc ls minio/model-artifacts/production/
+
+              # Trigger rolling restart of model-serving to pick up new models
+              # (In production, use a more sophisticated approach like webhooks)
+              echo "Model sync completed. Consider triggering deployment update."
+            env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey

@@ -1,0 +1,61 @@
+# Default values for infrastructure chart
+
+# PostgreSQL MLFlow Database
+postgresMlflow:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# PostgreSQL Airflow Database
+postgresAirflow:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "15-alpine"
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Redis
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+  persistence:
+    enabled: true
+    size: 5Gi
+
+# MinIO
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: "RELEASE.2025-09-07T16-13-09Z-cpuv1"
+  persistence:
+    enabled: true
+    size: 20Gi
+
+# Kafka
+kafka:
+  enabled: true
+  image:
+    repository: confluentinc/cp-kafka
+    tag: "7.5.0"
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Zookeeper
+zookeeper:
+  enabled: true
+  image:
+    repository: confluentinc/cp-zookeeper
+    tag: "7.5.0"
+  persistence:
+    enabled: true
+    size: 5Gi

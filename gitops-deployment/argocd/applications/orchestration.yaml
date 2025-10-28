@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orchestration
+  namespace: argocd
+spec:
+  project: clinical-mlops
+  source:
+    repoURL: https://github.com/your-org/clinical-trials-service.git
+    targetRevision: main
+    path: gitops-deployment/kubernetes-manifests/orchestration
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clinical-mlops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+  info:
+    - name: description
+      value: "Level 5 - Orchestration layer (Airflow, workflow management)"

@@ -81,14 +81,18 @@ processors:
           }
         }
 
-# Output to Data Prepper (OpenSearch ingestion)
-output.logstash:
-  hosts: ["data-prepper:2021"]
+# Output to OpenSearch directly for production
+output.elasticsearch:
+  hosts: ["opensearch:9200"]
+  index: "clinical-mlops-logs-%{+yyyy.MM.dd}"
+  template.name: "clinical-mlops"
+  template.pattern: "clinical-mlops-*"
+  template.settings:
+    index.number_of_shards: 1
+    index.number_of_replicas: 1
   compression_level: 3
   bulk_max_size: 2048
   ttl: 15s
-  escape_html: false
-  proxy_header: "header_value"
 
 # Queue settings
 queue.mem:

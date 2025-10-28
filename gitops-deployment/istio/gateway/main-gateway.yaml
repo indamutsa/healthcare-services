@@ -1,0 +1,32 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: clinical-mlops-gateway
+  namespace: clinical-mlops
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "clinical-mlops.local"
+    - "api.clinical-mlops.local"
+    - "mlflow.clinical-mlops.local"
+    - "grafana.clinical-mlops.local"
+    - "airflow.clinical-mlops.local"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: clinical-mlops-tls
+    hosts:
+    - "clinical-mlops.local"
+    - "api.clinical-mlops.local"
+    - "mlflow.clinical-mlops.local"
+    - "grafana.clinical-mlops.local"
+    - "airflow.clinical-mlops.local"

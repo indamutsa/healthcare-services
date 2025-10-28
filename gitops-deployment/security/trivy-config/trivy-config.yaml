@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-config
+  namespace: clinical-mlops
+data:
+  trivy.yaml: |
+    # Trivy configuration for container scanning
+    scan:
+      # Skip files and directories
+      skipFiles:
+        - "*.md"
+        - "*.txt"
+        - "*.log"
+        - "test/*"
+        - "tests/*"
+      
+      # Skip directories
+      skipDirs:
+        - "node_modules"
+        - ".git"
+        - "vendor"
+        - "__pycache__"
+      
+      # Security checks
+      security-checks:
+        vuln: true
+        config: true
+        secret: true
+        license: true
+      
+      # Severity levels to report
+      severity:
+        - UNKNOWN
+        - LOW
+        - MEDIUM
+        - HIGH
+        - CRITICAL
+      
+      # Vulnerability database
+      vulnerability:
+        type: "full"
+        db-repository: "ghcr.io/aquasecurity/trivy-db"
+        java-db-repository: "ghcr.io/aquasecurity/trivy-java-db"
+      
+      # Secret scanning
+      secret:
+        config-path: "/etc/trivy/secret-rules"
+      
+      # License checking
+      license:
+        full: true
+        include-categories:
+          - "copyleft"
+        exclude-categories:
+          - "permissive"
+      
+      # Report format
+      format: "sarif"
+      output: "trivy-report.sarif"
+    
+    # Cache configuration
+    cache:
+      dir: "/tmp/.cache/trivy"
+    
+    # Timeout configuration
+    timeout: "10m"
+    
+    # Parallel scanning
+    parallel: "4"
+    
+    # Registry scanning
+    registry:
+      insecure-skip-verify: false
+      use-http: false
+      
+  secret-rules.yaml: |
+    # Custom secret detection rules
+    rules:
+      - id: aws-access-key
+        title: AWS Access Key
+        regex: "(?i)aws.*[\"']?(access[\\-_]key|key[\\-_]id|secret)[\"']?[:\\s=]+[\"']?([A-Z0-9]{20})"
+        severity: HIGH
+      
+      - id: database-url
+        title: Database URL
+        regex: "(?i)(postgres|mysql|mariadb)://[\\w:]+@[-\\w\\.]+:[\\d]{1,5}/[\\w]+"
+        severity: MEDIUM
+      
+      - id: api-key
+        title: API Key
+        regex: "(?i)api[_-]?key[_-]?\\w*[\"']?[:\\s=]+[\"']?([\\w-]{10,})"
+        severity: HIGH

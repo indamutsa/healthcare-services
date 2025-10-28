@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-producer
+  namespace: clinical-mlops
+  labels:
+    app: kafka-producer
+    tier: data-ingestion
+    layer: level1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kafka-producer
+  template:
+    metadata:
+      labels:
+        app: kafka-producer
+        tier: data-ingestion
+        layer: level1
+    spec:
+      containers:
+      - name: kafka-producer
+        image: kafka-producer:latest
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-broker:9092"
+        - name: KAFKA_TOPIC_CLINICAL_DATA
+          value: "clinical-data"
+        - name: KAFKA_TOPIC_LAB_RESULTS
+          value: "lab-results"
+        - name: KAFKA_TOPIC_MEDICATIONS
+          value: "medications"
+        - name: KAFKA_TOPIC_VITALS
+          value: "vitals"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "ps aux | grep python | grep producer.py"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "netstat -tulpn | grep :9092 || exit 1"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-producer
+  namespace: clinical-mlops
+  labels:
+    app: kafka-producer
+    tier: data-ingestion
+    layer: level1
+spec:
+  selector:
+    app: kafka-producer
+  ports:
+  - port: 9092
+    targetPort: 9092
+    protocol: TCP
+  type: ClusterIP

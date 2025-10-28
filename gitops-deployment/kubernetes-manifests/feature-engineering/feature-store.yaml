@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-store
+  namespace: clinical-mlops
+  labels:
+    app: feature-store
+    tier: feature-engineering
+    layer: level3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: feature-store
+  template:
+    metadata:
+      labels:
+        app: feature-store
+        tier: feature-engineering
+        layer: level3
+    spec:
+      containers:
+      - name: feature-store
+        image: feature-engineering:latest
+        env:
+        - name: S3_ENDPOINT
+          value: "http://minio:9000"
+        - name: S3_BUCKET_FEATURES
+          value: "clinical-features"
+        - name: REDIS_HOST
+          value: "redis-master"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: FEATURE_STORE_TYPE
+          value: "redis"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "python -c 'import feature_store; print(\"Feature store running\")'"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "curl -f http://localhost:8080/health || exit 1"
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-store
+  namespace: clinical-mlops
+  labels:
+    app: feature-store
+    tier: feature-engineering
+    layer: level3
+spec:
+  selector:
+    app: feature-store
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

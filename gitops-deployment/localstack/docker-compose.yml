@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  localstack:
+    container_name: clinical-mlops-localstack
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"            # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - DEBUG=1
+      - LS_LOG=trace
+      # S3 is handled by MinIO - LocalStack provides other AWS services
+      - SERVICES=sqs,sns,lambda,dynamodb,secretsmanager,ssm,cloudwatch,logs,events,kinesis,stepfunctions,iam,sts,kms,ecr
+      - LOCALSTACK_HOST=localstack
+      - HOSTNAME=localhost
+      - HOSTNAME_EXTERNAL=localstack
+      - PERSISTENCE=/tmp/localstack/data
+      - DATA_DIR=/tmp/localstack/data
+      - START_WEB=0
+      - KINESIS_ERROR_PROBABILITY=0.0
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "./init-scripts:/docker-entrypoint-initaws.d"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - localstack_data:/tmp/localstack
+    networks:
+      - clinical-mlops-network
+
+  # Additional AWS service containers for simulation
+  localstack-init:
+    container_name: clinical-mlops-localstack-init
+    image: amazon/aws-cli:latest
+    depends_on:
+      - localstack
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-west-2
+      - AWS_ENDPOINT_URL=http://localstack:4566
+    command: >
+      sh -c "
+      echo 'Waiting for LocalStack to be ready...' &&
+      sleep 15 &&
+      echo 'Checking LocalStack health...' &&
+      aws --endpoint-url=http://localstack:4566 sqs list-queues --region us-west-2 &&
+      echo 'LocalStack is ready!' &&
+      echo 'Note: S3 is handled by MinIO, not LocalStack'
+      "
+    networks:
+      - clinical-mlops-network
+
+volumes:
+  localstack_data:
+    driver: local
+
+networks:
+  clinical-mlops-network:
+    driver: bridge

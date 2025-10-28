@@ -1,0 +1,268 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+  namespace: clinical-mlops
+  labels:
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: postgres-backup
+            image: postgres:15
+            command:
+            - /bin/bash
+            - -c
+            - |
+              DATE=$(date +%Y%m%d_%H%M%S)
+              BACKUP_FILE="/backups/postgres_backup_${DATE}.sql"
+              
+              # Create backup
+              pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB > $BACKUP_FILE
+              
+              # Compress backup
+              gzip $BACKUP_FILE
+              
+              # Upload to MinIO
+              mc alias set minio http://$MINIO_HOST:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+              mc cp ${BACKUP_FILE}.gz minio/backups/postgres/
+              
+              # Clean up local files older than 7 days
+              find /backups -name "*.gz" -mtime +7 -delete
+              
+              # Keep only last 30 backups in MinIO
+              mc rm --recursive --force --older-than 30d minio/backups/postgres/
+            env:
+            - name: POSTGRES_HOST
+              value: postgres-mlflow
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: POSTGRES_DB
+              value: mlflow
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: MINIO_HOST
+              value: minio
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage-pvc
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mlflow-model-backup
+  namespace: clinical-mlops
+  labels:
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 3 * * 0"  # Weekly on Sunday at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: mlflow-backup
+            image: python:3.9-slim
+            command:
+            - /bin/bash
+            - -c
+            - |
+              pip install boto3 mlflow psycopg2-binary
+              
+              DATE=$(date +%Y%m%d_%H%M%S)
+              BACKUP_DIR="/backups/mlflow_${DATE}"
+              mkdir -p $BACKUP_DIR
+              
+              # Backup MLflow experiments and runs
+              python3 -c "
+              import mlflow
+              import psycopg2
+              import pickle
+              import json
+              
+              # Connect to database
+              conn = psycopg2.connect(
+                  host='$POSTGRES_HOST',
+                  user='$POSTGRES_USER',
+                  password='$PGPASSWORD',
+                  database='$POSTGRES_DB'
+              )
+              cursor = conn.cursor()
+              
+              # Export experiments
+              cursor.execute('SELECT * FROM experiments')
+              experiments = cursor.fetchall()
+              
+              # Export runs
+              cursor.execute('SELECT * FROM runs')
+              runs = cursor.fetchall()
+              
+              with open('$BACKUP_DIR/experiments.json', 'w') as f:
+                  json.dump([dict(row) for row in experiments], f, default=str)
+              
+              with open('$BACKUP_DIR/runs.json', 'w') as f:
+                  json.dump([dict(row) for row in runs], f, default=str)
+              
+              conn.close()
+              print('MLflow metadata backup completed')
+              "
+              
+              # Backup model artifacts from MinIO
+              mc alias set minio http://$MINIO_HOST:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+              mc cp --recursive minio/mlflow-artifacts/ $BACKUP_DIR/artifacts/
+              
+              # Create compressed backup
+              tar -czf "/backups/mlflow_backup_${DATE}.tar.gz" -C /backups mlflow_${DATE}
+              
+              # Upload to backup storage
+              mc cp "/backups/mlflow_backup_${DATE}.tar.gz" minio/backups/mlflow/
+              
+              # Clean up
+              rm -rf $BACKUP_DIR
+              find /backups -name "mlflow_backup_*.tar.gz" -mtime +30 -delete
+              mc rm --recursive --force --older-than 90d minio/backups/mlflow/
+            env:
+            - name: POSTGRES_HOST
+              value: postgres-mlflow
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: POSTGRES_DB
+              value: mlflow
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: MINIO_HOST
+              value: minio
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 1
+                memory: 2Gi
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage-pvc
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: storage-cleanup
+  namespace: clinical-mlops
+  labels:
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: maintenance
+spec:
+  schedule: "0 4 * * *"  # Daily at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanup
+            image: alpine:3.18
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Install required tools
+              apk add --no-cache curl jq
+              
+              # Clean up old log files from applications
+              echo "Cleaning up old log files..."
+              
+              # Clean up temporary files in /tmp
+              find /tmp -type f -atime +7 -delete
+              
+              # Clean up MinIO old temporary uploads (older than 1 day)
+              echo "Cleaning up MinIO temporary files..."
+              if command -v mc >/dev/null 2>&1; then
+                mc alias set minio http://$MINIO_HOST:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+                mc rm --recursive --force --older-than 1d minio/temp/ || echo "No temp files to clean"
+              fi
+              
+              # Clean up unused Docker images (if running on nodes)
+              echo "Storage cleanup completed"
+            env:
+            - name: MINIO_HOST
+              value: minio
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1

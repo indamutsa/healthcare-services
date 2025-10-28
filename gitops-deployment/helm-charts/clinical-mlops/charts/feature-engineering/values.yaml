@@ -1,0 +1,33 @@
+# Feature Store
+featureStore:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: feature-store
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  persistence:
+    enabled: true
+    size: 10Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+# Service Monitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics

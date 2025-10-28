@@ -1,0 +1,207 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (default: latest from develop)'
+        required: false
+        default: 'latest'
+
+env:
+  KUBECONFIG_STAGING: ${{ secrets.KUBECONFIG_STAGING }}
+  ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER_STAGING }}
+  ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN_STAGING }}
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Environment
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.clinical-mlops.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ env.KUBECONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token=${{ env.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web
+
+      - name: Update image tags in manifests
+        run: |
+          VERSION="${{ github.event.inputs.version || github.sha }}"
+
+          # Update image tags in Kustomize overlays
+          cd gitops-deployment/kubernetes-manifests/overlays/staging
+
+          # Update each service image tag
+          kustomize edit set image \
+            clinical-data-gateway=ghcr.io/${{ github.repository_owner }}/clinical-mlops/clinical-data-gateway:${VERSION} \
+            feature-engineering=ghcr.io/${{ github.repository_owner }}/clinical-mlops/feature-engineering:${VERSION} \
+            model-training=ghcr.io/${{ github.repository_owner }}/clinical-mlops/model-training:${VERSION} \
+            model-serving=ghcr.io/${{ github.repository_owner }}/clinical-mlops/model-serving:${VERSION}
+
+      - name: Sync ArgoCD Applications
+        run: |
+          # Sync all layers in order
+          APPS=(
+            "infrastructure"
+            "data-ingestion"
+            "data-processing"
+            "feature-engineering"
+            "ml-pipeline"
+            "orchestration"
+            "observability"
+          )
+
+          for app in "${APPS[@]}"; do
+            echo "Syncing $app..."
+            argocd app sync $app --revision develop --prune --timeout 600
+            argocd app wait $app --health --timeout 600
+          done
+
+      - name: Verify deployment
+        run: |
+          # Check all deployments are healthy
+          kubectl get deployments -n clinical-mlops-staging -o wide
+          kubectl get pods -n clinical-mlops-staging
+
+          # Verify critical services
+          kubectl wait --for=condition=ready pod \
+            -l app=clinical-data-gateway \
+            -n clinical-mlops-staging \
+            --timeout=300s
+
+          kubectl wait --for=condition=ready pod \
+            -l app=model-serving \
+            -n clinical-mlops-staging \
+            --timeout=300s
+
+      - name: Run smoke tests
+        run: |
+          # Get service endpoints
+          GATEWAY_URL=$(kubectl get svc clinical-data-gateway -n clinical-mlops-staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          SERVING_URL=$(kubectl get svc model-serving -n clinical-mlops-staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+          # Health checks
+          curl -f http://${GATEWAY_URL}/health || exit 1
+          curl -f http://${SERVING_URL}/health || exit 1
+
+          echo " Smoke tests passed"
+
+      - name: Tag deployment
+        if: success()
+        run: |
+          git tag -a "staging-${{ github.sha }}" -m "Deployed to staging: ${{ github.sha }}"
+          git push origin "staging-${{ github.sha }}"
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Staging Deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Deployment*\n*Status*: ${{ job.status }}\n*Commit*: ${{ github.sha }}\n*Author*: ${{ github.actor }}\n*Branch*: ${{ github.ref_name }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  rollback-on-failure:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: failure()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Rollback deployment
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token=${{ env.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web
+
+          # Rollback all applications
+          for app in infrastructure data-ingestion data-processing feature-engineering ml-pipeline orchestration observability; do
+            echo "Rolling back $app..."
+            argocd app rollback $app
+          done
+
+      - name: Notify rollback
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "� Staging deployment failed - Automatic rollback initiated",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging Rollback*\n*Reason*: Deployment failure\n*Commit*: ${{ github.sha }}\n*Author*: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ needs.deploy-staging.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

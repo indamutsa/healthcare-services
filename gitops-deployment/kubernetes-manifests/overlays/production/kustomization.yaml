@@ -1,0 +1,142 @@
+# Kustomize overlay for Production environment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: clinical-mlops-production
+
+namePrefix: prod-
+
+commonLabels:
+  environment: production
+  managed-by: kustomize
+  compliance: hipaa
+
+commonAnnotations:
+  oncall: "platform-team@example.com"
+  runbook: "https://wiki.example.com/clinical-mlops/runbook"
+
+resources:
+- ../../infrastructure/
+- ../../data-ingestion/
+- ../../data-processing/
+- ../../feature-engineering/
+- ../../ml-pipeline/
+- ../../orchestration/
+- ../../observability/
+- ../../production/hpa.yaml
+- ../../production/pdb.yaml
+- ../../production/resource-quotas.yaml
+
+patches:
+# High availability for critical services
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 3
+  target:
+    kind: Deployment
+    name: clinical-data-gateway
+
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 3
+  target:
+    kind: Deployment
+    name: model-serving
+
+# Production resource limits
+- patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "2Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "500m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "2"
+  target:
+    kind: Deployment
+    labelSelector: "tier=ml-pipeline"
+
+# Add priority classes
+- patch: |-
+    - op: add
+      path: /spec/template/spec/priorityClassName
+      value: critical-priority
+  target:
+    kind: Deployment
+    labelSelector: "tier=infrastructure"
+
+- patch: |-
+    - op: add
+      path: /spec/template/spec/priorityClassName
+      value: high-priority
+  target:
+    kind: Deployment
+    labelSelector: "tier=ml-pipeline"
+
+# Pod Anti-Affinity for HA
+- patch: |-
+    - op: add
+      path: /spec/template/spec/affinity
+      value:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - clinical-data-gateway
+              topologyKey: kubernetes.io/hostname
+  target:
+    kind: Deployment
+    name: clinical-data-gateway
+
+configMapGenerator:
+- name: env-config
+  literals:
+  - ENVIRONMENT=production
+  - LOG_LEVEL=WARNING
+  - ENABLE_DEBUG=false
+  - ENABLE_METRICS=true
+  - ENABLE_TRACING=true
+  - ENABLE_AUDIT_LOGGING=true
+  - HIPAA_COMPLIANCE=true
+
+replicas:
+- name: clinical-data-gateway
+  count: 3
+- name: model-serving
+  count: 3
+- name: feature-engineering
+  count: 2
+- name: airflow-webserver
+  count: 2
+- name: airflow-worker
+  count: 3
+- name: kafka
+  count: 3
+- name: redis
+  count: 3
+
+images:
+- name: clinical-data-gateway
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/clinical-data-gateway
+  newTag: v1.0.0
+- name: model-serving
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/model-serving
+  newTag: v1.0.0
+- name: feature-engineering
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/feature-engineering
+  newTag: v1.0.0
+- name: model-training
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/model-training
+  newTag: v1.0.0

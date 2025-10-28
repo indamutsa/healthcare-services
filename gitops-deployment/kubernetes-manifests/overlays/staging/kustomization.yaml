@@ -1,0 +1,87 @@
+# Kustomize overlay for Staging environment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: clinical-mlops-staging
+
+namePrefix: staging-
+
+commonLabels:
+  environment: staging
+  managed-by: kustomize
+
+resources:
+- ../../infrastructure/
+- ../../data-ingestion/
+- ../../data-processing/
+- ../../feature-engineering/
+- ../../ml-pipeline/
+- ../../orchestration/
+- ../../observability/
+
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 2
+  target:
+    kind: Deployment
+    name: clinical-data-gateway
+
+- patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 2
+  target:
+    kind: Deployment
+    name: model-serving
+
+- patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/memory
+      value: "512Mi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/memory
+      value: "1Gi"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/requests/cpu
+      value: "250m"
+    - op: replace
+      path: /spec/template/spec/containers/0/resources/limits/cpu
+      value: "1"
+  target:
+    kind: Deployment
+
+configMapGenerator:
+- name: env-config
+  literals:
+  - ENVIRONMENT=staging
+  - LOG_LEVEL=INFO
+  - ENABLE_DEBUG=false
+  - ENABLE_METRICS=true
+
+replicas:
+- name: clinical-data-gateway
+  count: 2
+- name: model-serving
+  count: 2
+- name: feature-engineering
+  count: 2
+- name: airflow-webserver
+  count: 2
+- name: airflow-worker
+  count: 2
+
+images:
+- name: clinical-data-gateway
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/clinical-data-gateway
+  newTag: staging-latest
+- name: model-serving
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/model-serving
+  newTag: staging-latest
+- name: feature-engineering
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/feature-engineering
+  newTag: staging-latest
+- name: model-training
+  newName: ghcr.io/clinical-trials-service/clinical-mlops/model-training
+  newTag: staging-latest

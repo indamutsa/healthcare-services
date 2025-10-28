@@ -1,0 +1,149 @@
+# Pod Disruption Budgets for High Availability
+# Ensures minimum number of pods are always available during voluntary disruptions
+
+---
+# Clinical Data Gateway PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: clinical-data-gateway-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: clinical-data-gateway
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+---
+# Model Serving PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: model-serving-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: model-serving
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+---
+# PostgreSQL MLflow PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres-mlflow-pdb
+  namespace: clinical-mlops
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: postgres-mlflow
+
+---
+# Redis PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: clinical-mlops
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: redis
+
+---
+# Kafka PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-pdb
+  namespace: clinical-mlops
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: kafka
+
+---
+# MLflow PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mlflow-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: mlflow
+
+---
+# Airflow Webserver PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: airflow-webserver-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: airflow
+      component: webserver
+
+---
+# Airflow Worker PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: airflow-worker-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: airflow
+      component: worker
+
+---
+# Feature Engineering PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: feature-engineering-pdb
+  namespace: clinical-mlops
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: feature-engineering
+
+---
+# Prometheus PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prometheus-pdb
+  namespace: clinical-mlops
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: prometheus
+
+---
+# Grafana PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana-pdb
+  namespace: clinical-mlops
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: grafana

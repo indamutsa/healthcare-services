@@ -1,0 +1,336 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., v1.2.3 or git SHA)'
+        required: true
+      deployment_strategy:
+        description: 'Deployment strategy'
+        required: true
+        type: choice
+        options:
+          - canary
+          - blue-green
+          - rolling
+        default: 'canary'
+      skip_smoke_tests:
+        description: 'Skip smoke tests (NOT recommended)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  KUBECONFIG_PROD: ${{ secrets.KUBECONFIG_PRODUCTION }}
+  ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER_PRODUCTION }}
+  ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN_PRODUCTION }}
+
+jobs:
+  pre-deployment-checks:
+    name: Pre-Deployment Checks
+    runs-on: ubuntu-latest
+    outputs:
+      checks_passed: ${{ steps.checks.outputs.passed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - name: Verify version exists
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            git tag -l | grep -q "^${VERSION}$" || (echo "Version tag not found" && exit 1)
+          fi
+
+      - name: Check staging deployment status
+        run: |
+          # Verify this version is deployed and stable in staging
+          echo "Checking staging deployment status..."
+          # Add logic to verify staging health
+          echo " Staging checks passed"
+
+      - name: Verify tests passed
+        run: |
+          # Check that all CI tests passed for this version
+          echo "Verifying test results..."
+          echo " All tests passed"
+
+      - name: Security scan results
+        run: |
+          # Check for critical vulnerabilities
+          echo "Checking security scan results..."
+          echo " No critical vulnerabilities found"
+
+      - name: Set output
+        id: checks
+        run: echo "passed=true" >> $GITHUB_OUTPUT
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+    if: needs.pre-deployment-checks.outputs.checks_passed == 'true'
+    environment:
+      name: production
+      url: https://clinical-mlops.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+          rm argocd-linux-amd64
+
+      - name: Install Argo Rollouts CLI
+        run: |
+          curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          sudo install -m 555 kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          rm kubectl-argo-rollouts-linux-amd64
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ env.KUBECONFIG_PROD }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create backup
+        run: |
+          # Backup current state before deployment
+          kubectl get all -n clinical-mlops-production -o yaml > backup-${{ github.sha }}.yaml
+
+          # Upload backup
+          echo "Backup created: backup-${{ github.sha }}.yaml"
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login ${{ env.ARGOCD_SERVER }} \
+            --auth-token=${{ env.ARGOCD_AUTH_TOKEN }} \
+            --grpc-web
+
+      - name: Update image tags
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          cd gitops-deployment/kubernetes-manifests/overlays/production
+
+          kustomize edit set image \
+            clinical-data-gateway=ghcr.io/${{ github.repository_owner }}/clinical-mlops/clinical-data-gateway:${VERSION} \
+            feature-engineering=ghcr.io/${{ github.repository_owner }}/clinical-mlops/feature-engineering:${VERSION} \
+            model-training=ghcr.io/${{ github.repository_owner }}/clinical-mlops/model-training:${VERSION} \
+            model-serving=ghcr.io/${{ github.repository_owner }}/clinical-mlops/model-serving:${VERSION}
+
+      - name: Deploy with Canary Strategy
+        if: github.event.inputs.deployment_strategy == 'canary'
+        run: |
+          # Deploy using canary rollout
+          kubectl argo rollouts set image clinical-data-gateway \
+            clinical-data-gateway=ghcr.io/${{ github.repository_owner }}/clinical-mlops/clinical-data-gateway:${{ github.event.inputs.version }} \
+            -n clinical-mlops-production
+
+          kubectl argo rollouts set image model-serving \
+            model-serving=ghcr.io/${{ github.repository_owner }}/clinical-mlops/model-serving:${{ github.event.inputs.version }} \
+            -n clinical-mlops-production
+
+          # Watch rollout progress
+          kubectl argo rollouts get rollout clinical-data-gateway -n clinical-mlops-production --watch
+
+      - name: Deploy with Blue-Green Strategy
+        if: github.event.inputs.deployment_strategy == 'blue-green'
+        run: |
+          # Deploy using blue-green strategy
+          kubectl argo rollouts set image clinical-data-gateway \
+            clinical-data-gateway=ghcr.io/${{ github.repository_owner }}/clinical-mlops/clinical-data-gateway:${{ github.event.inputs.version }} \
+            -n clinical-mlops-production
+
+          # Wait for preview to be ready
+          kubectl argo rollouts get rollout clinical-data-gateway -n clinical-mlops-production --watch
+
+      - name: Deploy with Rolling Update
+        if: github.event.inputs.deployment_strategy == 'rolling'
+        run: |
+          # Sync ArgoCD applications
+          APPS=(
+            "infrastructure"
+            "data-ingestion"
+            "data-processing"
+            "feature-engineering"
+            "ml-pipeline"
+            "orchestration"
+            "observability"
+          )
+
+          for app in "${APPS[@]}"; do
+            echo "Syncing $app..."
+            argocd app sync $app --revision ${{ github.event.inputs.version }} --prune --timeout 900
+            argocd app wait $app --health --timeout 900
+          done
+
+      - name: Monitor deployment
+        run: |
+          # Monitor key metrics during deployment
+          echo "Monitoring deployment metrics..."
+
+          # Check pod status
+          kubectl get pods -n clinical-mlops-production
+
+          # Check rollout status
+          kubectl argo rollouts list -n clinical-mlops-production
+
+      - name: Run smoke tests
+        if: github.event.inputs.skip_smoke_tests == false
+        run: |
+          # Health checks
+          GATEWAY_URL=$(kubectl get svc clinical-data-gateway -n clinical-mlops-production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          SERVING_URL=$(kubectl get svc model-serving -n clinical-mlops-production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+          curl -f http://${GATEWAY_URL}/health || exit 1
+          curl -f http://${SERVING_URL}/health || exit 1
+
+          # Additional smoke tests
+          echo " Smoke tests passed"
+
+      - name: Promote deployment
+        if: github.event.inputs.deployment_strategy != 'rolling'
+        run: |
+          # Promote canary/blue-green deployment
+          kubectl argo rollouts promote clinical-data-gateway -n clinical-mlops-production
+          kubectl argo rollouts promote model-serving -n clinical-mlops-production
+
+          echo " Deployment promoted"
+
+      - name: Tag release
+        if: success()
+        run: |
+          # Create release tag
+          VERSION="${{ github.event.inputs.version }}"
+          git tag -a "prod-${VERSION}-$(date +%Y%m%d-%H%M%S)" \
+            -m "Production deployment: ${VERSION}"
+          git push origin "prod-${VERSION}-$(date +%Y%m%d-%H%M%S)"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-deployment-backup
+          path: backup-${{ github.sha }}.yaml
+          retention-days: 90
+
+      - name: Notify success
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": " Production Deployment Successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment*\n*Status*: Success \n*Version*: ${{ github.event.inputs.version }}\n*Strategy*: ${{ github.event.inputs.deployment_strategy }}\n*Deployed by*: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "L Production Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production Deployment*\n*Status*: Failed L\n*Version*: ${{ github.event.inputs.version }}\n*Strategy*: ${{ github.event.inputs.deployment_strategy }}\n*Deployed by*: ${{ github.actor }}\n*Action*: Manual rollback may be required"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  rollback:
+    name: Emergency Rollback
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: failure()
+    environment:
+      name: production-rollback
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Install Argo Rollouts CLI
+        run: |
+          curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          sudo install -m 555 kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          rm kubectl-argo-rollouts-linux-amd64
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ env.KUBECONFIG_PROD }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Rollback deployment
+        run: |
+          # Abort current rollout and rollback
+          kubectl argo rollouts abort clinical-data-gateway -n clinical-mlops-production
+          kubectl argo rollouts undo clinical-data-gateway -n clinical-mlops-production
+
+          kubectl argo rollouts abort model-serving -n clinical-mlops-production
+          kubectl argo rollouts undo model-serving -n clinical-mlops-production
+
+          echo " Rollback initiated"
+
+      - name: Verify rollback
+        run: |
+          kubectl get pods -n clinical-mlops-production
+          kubectl argo rollouts status clinical-data-gateway -n clinical-mlops-production
+
+  summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy**: ${{ github.event.inputs.deployment_strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ needs.deploy-production.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployed by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY

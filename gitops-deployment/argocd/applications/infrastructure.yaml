@@ -1,0 +1,131 @@
+# ArgoCD Application for Infrastructure Services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source: Kubernetes manifests for infrastructure services
+  source:
+    repoURL: https://github.com/your-org/clinical-trials-service.git
+    targetRevision: HEAD
+    path: gitops-deployment/kubernetes-manifests/base/infrastructure
+    
+  # Destination: Infrastructure namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: infrastructure
+    
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    
+  # Health checks
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    
+  # Resource limits and hooks
+  info:
+    - name: description
+      value: "Infrastructure services for Clinical Trials MLOps Platform"
+    - name: maintainer
+      value: "MLOps Team"
+
+---
+# ArgoCD Application for Data Ingestion Services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: data-ingestion
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source: Kubernetes manifests for data ingestion services
+  source:
+    repoURL: https://github.com/your-org/clinical-trials-service.git
+    targetRevision: HEAD
+    path: gitops-deployment/kubernetes-manifests/base/data-ingestion
+    
+  # Destination: Data Ingestion namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-ingestion
+    
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    
+  # Health checks
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    
+  # Dependencies
+  dependsOn:
+  - infrastructure
+
+---
+# ArgoCD Application for Data Processing Services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: data-processing
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  # Source: Kubernetes manifests for data processing services
+  source:
+    repoURL: https://github.com/your-org/clinical-trials-service.git
+    targetRevision: HEAD
+    path: gitops-deployment/kubernetes-manifests/base/data-processing
+    
+  # Destination: Data Processing namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-processing
+    
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - ApplyOutOfSyncOnly=true
+    
+  # Health checks
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    
+  # Dependencies
+  dependsOn:
+  - infrastructure
+  - data-ingestion

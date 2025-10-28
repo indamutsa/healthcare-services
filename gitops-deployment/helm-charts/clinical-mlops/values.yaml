@@ -1,0 +1,171 @@
+# Global configuration
+global:
+  namespace: clinical-mlops
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: "standard"
+  labels: {}
+  annotations: {}
+
+# Infrastructure (Level 0)
+infrastructure:
+  enabled: true
+  postgres:
+    enabled: true
+    image: postgres:15
+    port: 5432
+    storage:
+      size: 10Gi
+  redis:
+    enabled: true
+    image: redis:7
+    port: 6379
+  minio:
+    enabled: true
+    image: minio/minio:latest
+    port: 9000
+    consolePort: 9001
+    storage:
+      size: 20Gi
+  kafka:
+    enabled: true
+    image: confluentinc/cp-kafka:7.5.0
+    zookeeper:
+      image: confluentinc/cp-zookeeper:7.5.0
+    storage:
+      size: 5Gi
+
+# Data Ingestion (Level 1)
+data-ingestion:
+  enabled: true
+  clinicalGateway:
+    enabled: true
+    replicas: 2
+    image: clinical-gateway:latest
+    port: 8000
+  kafkaProducer:
+    enabled: true
+    replicas: 1
+    image: kafka-producer:latest
+  kafkaConsumer:
+    enabled: true
+    replicas: 1
+    image: kafka-consumer:latest
+
+# Data Processing (Level 2)
+data-processing:
+  enabled: true
+  sparkStreaming:
+    enabled: true
+    replicas: 1
+    image: spark-streaming:latest
+  sparkBatch:
+    enabled: true
+    replicas: 1
+    image: spark-batch:latest
+
+# Feature Engineering (Level 3)
+feature-engineering:
+  enabled: true
+  featureStore:
+    enabled: true
+    replicas: 1
+    image: feature-store:latest
+    port: 8080
+
+# ML Pipeline (Level 4)
+ml-pipeline:
+  enabled: true
+  mlflow:
+    enabled: true
+    image: mlflow:latest
+    port: 5000
+  modelTraining:
+    enabled: true
+    replicas: 1
+    image: model-training:latest
+  modelServing:
+    enabled: true
+    replicas: 2
+    image: model-serving:latest
+    port: 8080
+
+# Orchestration (Level 5)
+orchestration:
+  enabled: true
+  airflow:
+    enabled: true
+    image: apache/airflow:2.7.0
+    executor: KubernetesExecutor
+    port: 8080
+    storage:
+      size: 5Gi
+
+# Observability (Level 6)
+observability:
+  enabled: true
+  prometheus:
+    enabled: true
+    image: prom/prometheus:latest
+    port: 9090
+    storage:
+      size: 10Gi
+  grafana:
+    enabled: true
+    image: grafana/grafana:latest
+    port: 3000
+    adminPassword: admin
+  monitoringService:
+    enabled: true
+    replicas: 1
+    image: monitoring-service:latest
+    port: 8001
+
+# Istio Service Mesh
+istio:
+  enabled: true
+  gateway:
+    enabled: true
+  virtualServices:
+    enabled: true
+  destinationRules:
+    enabled: true
+
+# Security
+security:
+  enabled: true
+  networkPolicy:
+    enabled: true
+  podSecurityPolicy:
+    enabled: true
+
+# Resources
+resources:
+  default:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Autoscaling
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+# Monitoring and Logging
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  logging:
+    enabled: true
+    elasticsearch:
+      enabled: true
+    filebeat:
+      enabled: true

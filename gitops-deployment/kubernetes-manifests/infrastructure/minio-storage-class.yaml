@@ -1,0 +1,120 @@
+# MinIO-backed Storage for Kubernetes using S3 CSI Driver
+# This allows pods to mount MinIO buckets as volumes
+
+---
+# Install MinIO CSI Driver (applies cluster-wide)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: csi-s3
+  namespace: kube-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: csi-s3
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "update"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "update"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["volumeattachments"]
+  verbs: ["get", "list", "watch", "update"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: csi-s3
+subjects:
+- kind: ServiceAccount
+  name: csi-s3
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: csi-s3
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# MinIO S3 Storage Class
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: minio-s3
+provisioner: ru.yandex.s3.csi
+parameters:
+  mounter: geesefs
+  options: "--memory-limit=1000 --dir-mode=0777 --file-mode=0666"
+  bucket: kubernetes-volumes
+  csi.storage.k8s.io/provisioner-secret-name: minio-credentials
+  csi.storage.k8s.io/provisioner-secret-namespace: clinical-mlops
+  csi.storage.k8s.io/controller-publish-secret-name: minio-credentials
+  csi.storage.k8s.io/controller-publish-secret-namespace: clinical-mlops
+  csi.storage.k8s.io/node-stage-secret-name: minio-credentials
+  csi.storage.k8s.io/node-stage-secret-namespace: clinical-mlops
+  csi.storage.k8s.io/node-publish-secret-name: minio-credentials
+  csi.storage.k8s.io/node-publish-secret-namespace: clinical-mlops
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+
+---
+# MinIO Credentials for CSI Driver (different format than app credentials)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-csi-credentials
+  namespace: clinical-mlops
+type: Opaque
+stringData:
+  accessKeyID: admin
+  secretAccessKey: changeme123!
+  endpoint: http://minio:9000
+  region: us-east-1
+
+---
+# Create MinIO bucket for Kubernetes volumes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-create-k8s-bucket
+  namespace: clinical-mlops
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: create-bucket
+        image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo 'Waiting for MinIO...'
+          until mc alias set myminio http://minio:9000 admin changeme123! 2>/dev/null; do
+            sleep 2
+          done
+
+          echo 'Creating Kubernetes volumes bucket...'
+          mc mb myminio/kubernetes-volumes --ignore-existing
+          mc mb myminio/mlflow-artifacts --ignore-existing
+          mc mb myminio/airflow-logs --ignore-existing
+          mc mb myminio/model-artifacts --ignore-existing
+          mc mb myminio/feature-store --ignore-existing
+          mc mb myminio/backups --ignore-existing
+
+          echo 'Setting bucket policies...'
+          mc anonymous set download myminio/mlflow-artifacts
+          mc anonymous set download myminio/model-artifacts
+
+          echo '✅ MinIO buckets configured'
+          mc ls myminio/

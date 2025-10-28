@@ -1,0 +1,41 @@
+# Snyk Policy Configuration
+version: v1.12.0
+
+# Ignored vulnerabilities
+ignore:
+  # Example: Ignore specific CVEs during development
+  'SNYK-JS-LODASH-567746':
+    - '*':
+        reason: 'Development environment only'
+        expires: '2024-12-31T23:59:59.999Z'
+  'SNYK-PYTHON-REQUESTS-2297707':
+    - '*':
+        reason: 'Fixed in next release'
+        expires: '2024-11-30T23:59:59.999Z'
+
+# Severity thresholds
+severityThresholds:
+  - low
+  - medium
+  - high
+
+# Patch rules
+patch:
+  'npm:lodash:20160121':
+    - '*'
+  'python:requests:20170420':
+    - '*'
+
+# License policies
+license:
+  allow:
+    - Apache-2.0
+    - MIT
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+  deny:
+    - GPL-2.0
+    - GPL-3.0
+    - AGPL-1.0
+    - AGPL-3.0

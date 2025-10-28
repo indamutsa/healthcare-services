@@ -1,0 +1,25 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: airflow
+  namespace: clinical-mlops
+spec:
+  hosts:
+  - "airflow.clinical-mlops.local"
+  gateways:
+  - clinical-mlops-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: airflow-web
+        port:
+          number: 8080
+    timeout: 30s
+    authPolicy:
+      - jwt:
+          issuer: "https://airflow.clinical-mlops.local"
+          jwksUri: "https://airflow.clinical-mlops.local/oidc/jwks"
+          forwardOriginalToken: true

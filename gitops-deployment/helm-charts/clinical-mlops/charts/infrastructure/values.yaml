@@ -1,0 +1,105 @@
+# PostgreSQL
+postgres:
+  enabled: true
+  fullnameOverride: postgres-mlflow
+  image:
+    repository: postgres
+    tag: "15"
+    pullPolicy: IfNotPresent
+  auth:
+    postgresPassword: "postgres"
+    database: "mlflow"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+    service:
+      ports:
+        postgresql: 5432
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Redis
+redis:
+  enabled: true
+  fullnameOverride: redis
+  image:
+    repository: redis
+    tag: "7"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+    service:
+      ports:
+        redis: 6379
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 512Mi
+
+# MinIO
+minio:
+  enabled: true
+  fullnameOverride: minio
+  image:
+    repository: minio/minio
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    rootUser: "minioadmin"
+    rootPassword: "minioadmin"
+  persistence:
+    enabled: true
+    size: 20Gi
+  service:
+    ports:
+      api: 9000
+      console: 9001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Kafka
+kafka:
+  enabled: true
+  fullnameOverride: kafka
+  image:
+    repository: confluentinc/cp-kafka
+    tag: "7.5.0"
+    pullPolicy: IfNotPresent
+  zookeeper:
+    image:
+      repository: confluentinc/cp-zookeeper
+      tag: "7.5.0"
+    persistence:
+      enabled: true
+      size: 2Gi
+  persistence:
+    enabled: true
+    size: 5Gi
+  service:
+    ports:
+      client: 9092
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi

@@ -1,0 +1,271 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-mlflow-pvc
+  namespace: clinical-mlops
+  labels:
+    app: postgres-mlflow
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: clinical-mlops
+  labels:
+    app: redis
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 8Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: clinical-mlops
+  labels:
+    app: minio
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: io-optimize
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-data-pvc
+  namespace: clinical-mlops
+  labels:
+    app: kafka
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: messaging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zookeeper-data-pvc
+  namespace: clinical-mlops
+  labels:
+    app: zookeeper
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: messaging
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-tracking-pvc
+  namespace: clinical-mlops
+  labels:
+    app: mlflow
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: ml-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 30Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-dags-pvc
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: orchestration
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-hdd
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-logs-pvc
+  namespace: clinical-mlops
+  labels:
+    app: airflow
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: orchestration
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-hdd
+  resources:
+    requests:
+      storage: 20Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data-pvc
+  namespace: clinical-mlops
+  labels:
+    app: prometheus
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data-pvc
+  namespace: clinical-mlops
+  labels:
+    app: grafana
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-hdd
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opensearch-data-pvc
+  namespace: clinical-mlops
+  labels:
+    app: opensearch
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: io-optimize
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: feature-store-pvc
+  namespace: clinical-mlops
+  labels:
+    app: feature-store
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: feature-engineering
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 40Gi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-store-pvc
+  namespace: clinical-mlops
+  labels:
+    app: model-serving
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: ml-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: io-optimize
+  resources:
+    requests:
+      storage: 60Gi
+
+---
+# For shared storage in Spark clusters
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spark-shared-pvc
+  namespace: clinical-mlops
+  labels:
+    app: spark
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: data-processing
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs
+  resources:
+    requests:
+      storage: 200Gi
+
+---
+# Backup storage for automated backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage-pvc
+  namespace: clinical-mlops
+  labels:
+    app: backup
+    app.kubernetes.io/name: clinical-mlops
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-hdd
+  resources:
+    requests:
+      storage: 500Gi

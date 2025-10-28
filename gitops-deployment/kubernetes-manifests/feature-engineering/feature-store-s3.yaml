@@ -1,0 +1,161 @@
+# Feature Store with MinIO S3 Storage
+# Stores feature data (parquet files) in MinIO for scalability and durability
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-engineering
+  namespace: clinical-mlops
+  labels:
+    app: feature-engineering
+    tier: feature-engineering
+    layer: level3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: feature-engineering
+  template:
+    metadata:
+      labels:
+        app: feature-engineering
+        tier: feature-engineering
+        layer: level3
+    spec:
+      containers:
+      - name: feature-engineering
+        image: ghcr.io/clinical-trials-service/clinical-mlops/feature-engineering:v1.0.0
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # MinIO S3 configuration for feature storage
+        - name: FEATURE_STORE_TYPE
+          value: "s3"
+
+        - name: FEATURE_STORE_S3_BUCKET
+          value: "feature-store"
+
+        - name: FEATURE_STORE_S3_ENDPOINT
+          value: "http://minio:9000"
+
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+
+        # Feature store paths in S3
+        - name: OFFLINE_STORE_PATH
+          value: "s3://feature-store/offline/"
+
+        - name: ONLINE_STORE_PATH
+          value: "s3://feature-store/online/"
+
+        # Redis for online features cache
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: connection-string
+
+        # PostgreSQL for feature registry metadata
+        - name: FEATURE_REGISTRY_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-mlflow-credentials
+              key: connection-string
+
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-engineering
+  namespace: clinical-mlops
+  labels:
+    app: feature-engineering
+spec:
+  selector:
+    app: feature-engineering
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+
+---
+# ConfigMap for feature engineering jobs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: feature-config
+  namespace: clinical-mlops
+data:
+  feature_config.yaml: |
+    storage:
+      type: s3
+      endpoint: http://minio:9000
+      bucket: feature-store
+      paths:
+        offline: offline/
+        online: online/
+        temp: temp/
+
+    # Feature computation settings
+    compute:
+      batch_size: 10000
+      parallelism: 4
+      checkpoint_interval: 1000
+
+    # Feature categories
+    features:
+      temporal:
+        - rolling_mean_7d
+        - rolling_std_7d
+        - rolling_mean_30d
+        - lag_1d
+        - lag_7d
+        - trend_7d
+
+      clinical:
+        - vital_signs
+        - lab_results
+        - medications
+        - adverse_events
+
+      contextual:
+        - site_features
+        - demographics
+        - compliance_metrics

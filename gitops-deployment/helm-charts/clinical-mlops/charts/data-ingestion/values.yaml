@@ -1,0 +1,62 @@
+# Clinical Data Gateway
+clinicalGateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: clinical-data-gateway
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+# Kafka Producer
+kafkaProducer:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: kafka-producer
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# Kafka Consumer
+kafkaConsumer:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: kafka-consumer
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics

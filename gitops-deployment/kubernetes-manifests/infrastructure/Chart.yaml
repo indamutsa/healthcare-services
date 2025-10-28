@@ -1,0 +1,6 @@
+apiVersion: v2
+name: infrastructure
+description: A Helm chart for Clinical Trials MLOps Infrastructure Services
+version: 0.1.0
+appVersion: "1.0"
+type: application

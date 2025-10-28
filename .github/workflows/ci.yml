@@ -1,0 +1,342 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-python:
+    name: Lint Python Services
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black mypy pylint
+
+      - name: Run ruff
+        run: |
+          ruff check applications/ --output-format=github
+
+      - name: Run black
+        run: |
+          black --check applications/
+
+      - name: Run mypy
+        continue-on-error: true
+        run: |
+          find applications/ -name "*.py" -path "*/app/*" -exec mypy {} + || true
+
+  lint-bash:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          severity: warning
+
+  lint-docker:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: "applications/*/Dockerfile"
+          recursive: true
+          failure-threshold: warning
+
+  lint-yaml:
+    name: Lint YAML Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run yamllint
+        run: |
+          pip install yamllint
+          yamllint -c .yamllint gitops-deployment/ docker-compose.yml || true
+
+  validate-kubernetes:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.28.0'
+
+      - name: Install kubeval
+        run: |
+          wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz
+          sudo mv kubeval /usr/local/bin
+
+      - name: Validate manifests with kubeval
+        run: |
+          kubeval --strict --ignore-missing-schemas gitops-deployment/kubernetes-manifests/**/*.yaml
+
+      - name: Install kubeconform
+        run: |
+          wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin
+
+      - name: Validate with kubeconform
+        run: |
+          kubeconform -summary -output json gitops-deployment/kubernetes-manifests/
+
+  test-python-services:
+    name: Test Python Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - clinical-data-gateway
+          - feature-engineering
+          - model-training
+          - model-serving
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./applications/${{ matrix.service }}
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          if [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
+          pip install pytest pytest-cov pytest-asyncio
+
+      - name: Run tests
+        working-directory: ./applications/${{ matrix.service }}
+        run: |
+          if [ -d tests ]; then
+            pytest tests/ -v --cov=app --cov-report=xml --cov-report=term
+          else
+            echo "No tests directory found, skipping tests"
+          fi
+
+      - name: Upload coverage to Codecov
+        if: github.event_name != 'pull_request'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./applications/${{ matrix.service }}/coverage.xml
+          flags: ${{ matrix.service }}
+          name: ${{ matrix.service }}
+
+  security-scan-code:
+    name: Security Scan - Code
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Snyk Code Test
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --sarif-file-output=snyk-code.sarif
+
+      - name: Upload Snyk results to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: snyk-code.sarif
+
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r applications/ -f json -o bandit-report.json || true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  security-scan-dependencies:
+    name: Security Scan - Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Safety check
+        run: |
+          pip install safety
+          find applications/ -name requirements.txt -exec safety check --file {} --output json \; || true
+
+      - name: Run pip-audit
+        run: |
+          pip install pip-audit
+          find applications/ -name requirements.txt -exec pip-audit -r {} \; || true
+
+  security-scan-containers:
+    name: Security Scan - Containers
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - clinical-data-gateway
+          - feature-engineering
+          - model-training
+          - model-serving
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: |
+          if [ -f applications/${{ matrix.service }}/Dockerfile ]; then
+            docker build -t ${{ matrix.service }}:test applications/${{ matrix.service }}
+          fi
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.service }}:test
+          format: 'sarif'
+          output: 'trivy-${{ matrix.service }}.sarif'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.service }}.sarif'
+          category: ${{ matrix.service }}
+
+  security-scan-iac:
+    name: Security Scan - Infrastructure as Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: gitops-deployment/
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run integration tests
+        run: |
+          # Integration tests would go here
+          echo "Integration tests placeholder"
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs:
+      - lint-python
+      - lint-bash
+      - lint-docker
+      - lint-yaml
+      - validate-kubernetes
+      - test-python-services
+      - security-scan-code
+      - security-scan-dependencies
+      - security-scan-containers
+      - security-scan-iac
+    if: always()
+    steps:
+      - name: Check status
+        run: |
+          echo "## CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All CI checks completed" >> $GITHUB_STEP_SUMMARY
+          echo "- Linting: " >> $GITHUB_STEP_SUMMARY
+          echo "- Testing: " >> $GITHUB_STEP_SUMMARY
+          echo "- Security Scanning: " >> $GITHUB_STEP_SUMMARY
+          echo "- Kubernetes Validation: " >> $GITHUB_STEP_SUMMARY

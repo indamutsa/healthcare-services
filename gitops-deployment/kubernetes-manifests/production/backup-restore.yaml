@@ -1,0 +1,267 @@
+# Backup and Restore Configurations using Velero
+# Provides disaster recovery for the Clinical MLOps Platform
+
+---
+# Velero Backup Schedule - Daily Full Backup
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: daily-full-backup
+  namespace: velero
+spec:
+  schedule: "0 2 * * *"  # 2 AM daily
+  template:
+    ttl: 720h  # 30 days retention
+    includedNamespaces:
+    - clinical-mlops
+    - clinical-mlops-staging
+    - clinical-mlops-production
+    includedResources:
+    - '*'
+    excludedResources:
+    - events
+    - events.events.k8s.io
+    snapshotVolumes: true
+    volumeSnapshotLocations:
+    - default
+    storageLocation: default
+
+---
+# Hourly Incremental Backup
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: hourly-incremental-backup
+  namespace: velero
+spec:
+  schedule: "0 * * * *"  # Hourly
+  template:
+    ttl: 168h  # 7 days retention
+    includedNamespaces:
+    - clinical-mlops-production
+    labelSelector:
+      matchLabels:
+        backup: critical
+    snapshotVolumes: true
+    storageLocation: default
+
+---
+# PostgreSQL Backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-mlflow-backup
+  namespace: clinical-mlops
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgres-backup
+            image: postgres:15-alpine
+            env:
+            - name: PGHOST
+              value: "postgres-mlflow"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-mlflow-credentials
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-mlflow-credentials
+                  key: password
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-mlflow-credentials
+                  key: database
+            command:
+            - /bin/sh
+            - -c
+            - |
+              BACKUP_FILE="/backup/postgres-mlflow-$(date +%Y%m%d-%H%M%S).sql.gz"
+              pg_dump | gzip > $BACKUP_FILE
+              echo "Backup created: $BACKUP_FILE"
+
+              # Upload to MinIO
+              mc alias set minio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
+              mc cp $BACKUP_FILE minio/backups/postgres/
+
+              # Cleanup old backups (keep 30 days)
+              find /backup -name "postgres-mlflow-*.sql.gz" -mtime +30 -delete
+            volumeMounts:
+            - name: backup-volume
+              mountPath: /backup
+          volumes:
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: postgres-backup-pvc
+
+---
+# MinIO Bucket Backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-backup
+  namespace: clinical-mlops
+spec:
+  schedule: "0 3 * * *"  # 3 AM daily
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: minio-backup
+            image: minio/mc:latest
+            env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey
+            command:
+            - /bin/sh
+            - -c
+            - |
+              mc alias set source http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}
+              mc alias set backup s3://backup-bucket ${BACKUP_ACCESS_KEY} ${BACKUP_SECRET_KEY}
+
+              # Mirror critical buckets
+              mc mirror --overwrite source/mlflow-artifacts backup/mlflow-artifacts
+              mc mirror --overwrite source/clinical-mlops backup/clinical-mlops
+
+              echo "Backup completed at $(date)"
+
+---
+# Persistent Volume Claim for Backups
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-pvc
+  namespace: clinical-mlops
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+
+---
+# Backup Verification CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verification
+  namespace: clinical-mlops
+spec:
+  schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: verify-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Verifying latest backup..."
+
+              # Get latest backup
+              LATEST_BACKUP=$(ls -t /backup/postgres-mlflow-*.sql.gz | head -1)
+
+              if [ -z "$LATEST_BACKUP" ]; then
+                echo "ERROR: No backup found!"
+                exit 1
+              fi
+
+              # Test restore to temporary database
+              gunzip -c $LATEST_BACKUP | psql -h postgres-test -U test -d test_restore
+
+              if [ $? -eq 0 ]; then
+                echo "✅ Backup verification successful"
+              else
+                echo "❌ Backup verification failed"
+                exit 1
+              fi
+            volumeMounts:
+            - name: backup-volume
+              mountPath: /backup
+          volumes:
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: postgres-backup-pvc
+
+---
+# Disaster Recovery Runbook ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dr-runbook
+  namespace: clinical-mlops
+data:
+  restore-procedure.md: |
+    # Disaster Recovery Procedure
+
+    ## Full Cluster Restore
+
+    1. Install Velero CLI
+    ```bash
+    velero install --provider aws --bucket clinical-mlops-backups
+    ```
+
+    2. List available backups
+    ```bash
+    velero backup get
+    ```
+
+    3. Restore from backup
+    ```bash
+    velero restore create --from-backup daily-full-backup-20250128
+    ```
+
+    4. Monitor restore progress
+    ```bash
+    velero restore describe <restore-name>
+    ```
+
+    ## PostgreSQL Point-in-Time Recovery
+
+    1. Download backup from MinIO
+    ```bash
+    mc cp minio/backups/postgres/postgres-mlflow-20250128-020000.sql.gz ./
+    ```
+
+    2. Restore to PostgreSQL
+    ```bash
+    gunzip -c postgres-mlflow-20250128-020000.sql.gz | psql -h localhost -U mlflow -d mlflow
+    ```
+
+    ## MinIO Bucket Restore
+
+    1. Restore from backup location
+    ```bash
+    mc mirror backup/mlflow-artifacts source/mlflow-artifacts
+    ```
+
+    ## RTO/RPO Targets
+    - **Recovery Time Objective (RTO)**: 4 hours
+    - **Recovery Point Objective (RPO)**: 1 hour

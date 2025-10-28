@@ -1,0 +1,133 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-training-job
+  namespace: clinical-mlops
+  labels:
+    app: ml-training
+    tier: ml-pipeline
+    layer: level4
+spec:
+  schedule: "0 3 * * *"  # Run daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: ml-training
+            tier: ml-pipeline
+            layer: level4
+        spec:
+          containers:
+          - name: ml-training
+            image: ml-training:latest
+            env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: S3_ENDPOINT
+              value: "http://minio:9000"
+            - name: S3_BUCKET_FEATURES
+              value: "clinical-features"
+            - name: S3_BUCKET_MODELS
+              value: "clinical-models"
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accessKey
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretKey
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1"
+              limits:
+                memory: "4Gi"
+                cpu: "2"
+          restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: clinical-mlops
+  labels:
+    app: mlflow-server
+    tier: ml-pipeline
+    layer: level4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow-server
+  template:
+    metadata:
+      labels:
+        app: mlflow-server
+        tier: ml-pipeline
+        layer: level4
+    spec:
+      containers:
+      - name: mlflow-server
+        image: mlflow/mlflow:latest
+        env:
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: "http://minio:9000"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: accessKey
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secretKey
+        command:
+        - mlflow
+        args:
+        - server
+        - --host
+        - 0.0.0.0
+        - --port
+        - "5000"
+        - --backend-store-uri
+        - postgresql://mlflow:mlflow@postgres-mlflow:5432/mlflow
+        - --default-artifact-root
+        - s3://mlflow-artifacts/
+        ports:
+        - containerPort: 5000
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: clinical-mlops
+  labels:
+    app: mlflow-server
+    tier: ml-pipeline
+    layer: level4
+spec:
+  selector:
+    app: mlflow-server
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+  type: ClusterIP

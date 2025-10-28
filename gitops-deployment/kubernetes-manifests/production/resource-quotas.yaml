@@ -1,0 +1,139 @@
+# Resource Quotas and Limit Ranges for Production
+# Ensures fair resource allocation and prevents resource exhaustion
+
+---
+# Namespace Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: clinical-mlops-quota
+  namespace: clinical-mlops
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "100"
+    requests.memory: "200Gi"
+    limits.cpu: "200"
+    limits.memory: "400Gi"
+
+    # Storage resources
+    requests.storage: "1Ti"
+    persistentvolumeclaims: "50"
+
+    # Object counts
+    pods: "200"
+    services: "50"
+    secrets: "100"
+    configmaps: "100"
+    replicationcontrollers: "50"
+    deployments.apps: "50"
+    statefulsets.apps: "20"
+    jobs.batch: "100"
+    cronjobs.batch: "20"
+
+---
+# Limit Range for Pods
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: pod-limit-range
+  namespace: clinical-mlops
+spec:
+  limits:
+  # Default limits for containers
+  - type: Container
+    default:
+      cpu: "1"
+      memory: "2Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    max:
+      cpu: "8"
+      memory: "32Gi"
+    min:
+      cpu: "50m"
+      memory: "128Mi"
+
+  # Pod-level limits
+  - type: Pod
+    max:
+      cpu: "16"
+      memory: "64Gi"
+    min:
+      cpu: "50m"
+      memory: "128Mi"
+
+  # PVC limits
+  - type: PersistentVolumeClaim
+    max:
+      storage: "500Gi"
+    min:
+      storage: "1Gi"
+
+---
+# Priority Classes for Workload Prioritization
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: critical-priority
+value: 1000000
+globalDefault: false
+description: "Critical services that must not be evicted (databases, core infrastructure)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 100000
+globalDefault: false
+description: "High-priority application services (API gateways, ML serving)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: medium-priority
+value: 10000
+globalDefault: true
+description: "Medium-priority services (feature engineering, processing)"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority
+value: 1000
+globalDefault: false
+description: "Low-priority batch jobs and training workloads"
+
+---
+# Network Policy for Resource Isolation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: resource-intensive-workloads
+  namespace: clinical-mlops
+spec:
+  podSelector:
+    matchLabels:
+      workload-type: resource-intensive
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres-mlflow
+    - podSelector:
+        matchLabels:
+          app: minio
+    - podSelector:
+        matchLabels:
+          app: kafka
+  - ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53

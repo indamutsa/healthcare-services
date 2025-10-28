@@ -1,23 +1,57 @@
-cluster.name: "clinical-mlops"
+cluster.name: "clinical-mlops-logs"
 node.name: "opensearch-node-1"
-path.data: /usr/share/opensearch/data
-path.logs: /usr/share/opensearch/logs
+
 network.host: 0.0.0.0
 http.port: 9200
+transport.port: 9300
+
+# Path settings
+path.data: /usr/share/opensearch/data
+path.logs: /usr/share/opensearch/logs
+
+# Discovery settings
 discovery.type: single-node
+
+# Security settings
 plugins.security.disabled: true
+
+# Performance settings
+bootstrap.memory_lock: true
+thread_pool.write.queue_size: 1000
+thread_pool.search.queue_size: 1000
+
+# JVM heap size (should be set to 50% of available memory)
+OPENSEARCH_JAVA_OPTS: "-Xmx1g -Xms1g"
+
+# Index settings
+action.auto_create_index: true
+indices.memory.index_buffer_size: 10%
+indices.queries.cache.size: 10%
+
+# Scripting settings
+script.engine.groovy.inline.search: on
+script.engine.groovy.inline.aggs: on
+
+# HTTP settings
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+
+# Index lifecycle management
+opendistro.index_management.enabled: true
+
+# Performance tuning
+indices.query.bool.max_clause_count: 4096
+search.max_buckets: 65536
+
+# Cluster routing allocation
+cluster.routing.allocation.disk.threshold_enabled: true
+cluster.routing.allocation.disk.watermark.low: 85%
+cluster.routing.allocation.disk.watermark.high: 90%
+cluster.routing.allocation.disk.watermark.flood_stage: 95%
+
+# Logging
+logger.level: INFO
 
 # Admin password for OpenSearch 2.14.0+
 plugins.security.authcz.admin_dn:
   - CN=admin,OU=SSL,O=Test,L=Test,C=DE
-
-# Performance settings
-thread_pool.write.queue_size: 1000
-thread_pool.search.queue_size: 1000
-
-# Index settings
-indices.memory.index_buffer_size: 10%
-indices.queries.cache.size: 10%
-
-# Logging
-logger.level: INFO

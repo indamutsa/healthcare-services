@@ -1,0 +1,60 @@
+# Airflow
+airflow:
+  enabled: true
+  fullnameOverride: airflow
+  image:
+    repository: apache/airflow
+    tag: "2.7.0"
+    pullPolicy: IfNotPresent
+  executor: KubernetesExecutor
+  service:
+    type: ClusterIP
+    ports:
+      webserver: 8080
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  persistence:
+    enabled: true
+    size: 5Gi
+  config:
+    core:
+      executor: KubernetesExecutor
+      load_examples: "False"
+      default_timezone: "UTC"
+    webserver:
+      expose_config: "True"
+    kubernetes:
+      pod_template_file: "/opt/airflow/pod_templates/pod_template.yaml"
+
+# PostgreSQL for Airflow
+postgresAirflow:
+  enabled: true
+  fullnameOverride: postgres-airflow
+  image:
+    repository: postgres
+    tag: "15"
+  auth:
+    postgresPassword: "airflow"
+    database: "airflow"
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Service Monitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics

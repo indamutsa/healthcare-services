@@ -1,0 +1,69 @@
+# Prometheus
+prometheus:
+  enabled: true
+  fullnameOverride: prometheus
+  image:
+    repository: prom/prometheus
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 9090
+    targetPort: 9090
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  persistence:
+    enabled: true
+    size: 10Gi
+
+# Grafana
+grafana:
+  enabled: true
+  fullnameOverride: grafana
+  image:
+    repository: grafana/grafana
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  adminPassword: admin
+
+# Monitoring Service
+monitoringService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: monitoring-service
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# Service Monitor
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics
