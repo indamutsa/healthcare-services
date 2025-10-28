@@ -33,7 +33,20 @@
       "Bash(lsof:*)",
       "Bash(curl:*)",
       "Bash(cat:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(kind version:*)",
+      "Bash(kubectl version:*)",
+      "Bash(helm version:*)",
+      "Bash(./setup-kind.sh)",
+      "Bash(kubectl cluster-info:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl wait:*)",
+      "Bash(kubectl create:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl:*)",
+      "Bash(helm install:*)",
+      "Bash(for i in {1..6})",
+      "Bash(do echo \"=== Check $i ===\")"
     ],
     "deny": [],
     "ask": []

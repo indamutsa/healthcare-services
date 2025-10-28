@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.minio.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.minio.name }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  serviceName: {{ .Values.minio.name }}
+  replicas: {{ .Values.minio.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.minio.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.minio.name }}
+    spec:
+      containers:
+      - name: {{ .Values.minio.name }}
+        image: {{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}
+        ports:
+        - containerPort: 9000
+          name: api
+        - containerPort: 9001
+          name: console
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.minio.secretName }}
+              key: username
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.minio.secretName }}
+              key: password
+        - name: MINIO_SERVER_URL
+          value: "http://{{ .Values.minio.name }}:9000"
+        args:
+        - server
+        - /data
+        - --console-address
+        - ":9001"
+        volumeMounts:
+        - name: minio-data
+          mountPath: /data
+        resources:
+          {{- toYaml .Values.minio.resources | nindent 12 }}
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: minio-data
+        persistentVolumeClaim:
+          claimName: {{ .Values.minio.pvc.name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.minio.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.minio.name }}
+spec:
+  ports:
+  - port: 9000
+    targetPort: 9000
+    name: api
+  - port: 9001
+    targetPort: 9001
+    name: console
+  selector:
+    app: {{ .Values.minio.name }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.minio.pvc.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.minio.pvc.size }}
+  {{- if .Values.minio.pvc.storageClassName }}
+  storageClassName: {{ .Values.minio.pvc.storageClassName }}
+  {{- end }}

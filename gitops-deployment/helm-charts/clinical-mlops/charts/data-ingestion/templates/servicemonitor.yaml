@@ -1,0 +1,18 @@
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-data-ingestion
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: data-ingestion
+    release: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.clinicalGateway.name | default "clinical-data-gateway" }}
+  endpoints:
+  - port: {{ .Values.clinicalGateway.service.targetPort }}
+    path: {{ .Values.serviceMonitor.path }}
+    interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}

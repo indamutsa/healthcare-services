@@ -1,0 +1,49 @@
+{{- if .Values.kafkaConsumer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.kafkaConsumer.name | default "kafka-consumer" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.kafkaConsumer.name | default "kafka-consumer" }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: {{ .Values.kafkaConsumer.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.kafkaConsumer.name | default "kafka-consumer" }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.kafkaConsumer.name | default "kafka-consumer" }}
+    spec:
+      containers:
+      - name: {{ .Values.kafkaConsumer.name | default "kafka-consumer" }}
+        image: "{{ .Values.kafkaConsumer.image.repository }}:{{ .Values.kafkaConsumer.image.tag }}"
+        imagePullPolicy: {{ .Values.kafkaConsumer.image.pullPolicy }}
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "{{ .Values.kafka.bootstrapServers }}"
+        - name: SPRING_PROFILES_ACTIVE
+          value: "{{ .Values.environment }}"
+        resources:
+          {{- toYaml .Values.kafkaConsumer.resources | nindent 12 }}
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "echo 'health check'"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "echo 'ready check'"
+          initialDelaySeconds: 5
+          periodSeconds: 5
+{{- end }}

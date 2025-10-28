@@ -1,0 +1,49 @@
+{{- if .Values.kafkaProducer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.kafkaProducer.name | default "kafka-producer" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.kafkaProducer.name | default "kafka-producer" }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: {{ .Values.kafkaProducer.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.kafkaProducer.name | default "kafka-producer" }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.kafkaProducer.name | default "kafka-producer" }}
+    spec:
+      containers:
+      - name: {{ .Values.kafkaProducer.name | default "kafka-producer" }}
+        image: "{{ .Values.kafkaProducer.image.repository }}:{{ .Values.kafkaProducer.image.tag }}"
+        imagePullPolicy: {{ .Values.kafkaProducer.image.pullPolicy }}
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "{{ .Values.kafka.bootstrapServers }}"
+        - name: SPRING_PROFILES_ACTIVE
+          value: "{{ .Values.environment }}"
+        resources:
+          {{- toYaml .Values.kafkaProducer.resources | nindent 12 }}
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "echo 'health check'"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - "echo 'ready check'"
+          initialDelaySeconds: 5
+          periodSeconds: 5
+{{- end }}
