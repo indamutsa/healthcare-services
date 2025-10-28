@@ -440,6 +440,30 @@ mc mirror minio/mlflow-artifacts/ s3://aws-mlflow-artifacts/
 
 ---
 
+## LocalStack Integration
+
+The platform integrates **LocalStack** for AWS services beyond S3:
+
+### Services Provided
+- **SQS**: Message queues for async processing
+- **SNS**: Pub/sub notifications and alerts
+- **DynamoDB**: NoSQL for model metadata, feature registry
+- **Secrets Manager**: Secure credential storage
+- **CloudWatch Logs**: Centralized logging
+- **Kinesis**: Real-time event streaming
+- **EventBridge**: Scheduled tasks and events
+- **SSM**: Parameter store for configuration
+
+### Why LocalStack + MinIO?
+- **MinIO**: Production-ready S3 (high performance, same API)
+- **LocalStack**: Other AWS services for development/testing
+- **Best of both**: Production S3 + full AWS ecosystem
+- **Cloud-ready**: Easy migration to AWS
+
+See: [LocalStack Integration Guide](localstack/LOCALSTACK_INTEGRATION.md)
+
+---
+
 ## Summary
 
 | Component | Storage Type | Why |
