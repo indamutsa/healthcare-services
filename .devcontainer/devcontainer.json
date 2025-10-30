@@ -1,7 +1,13 @@
 {
   "name": "Ubuntu Dev Container",
   "image": "ubuntu:22.04",
-  "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
+  "runArgs": [
+    "--privileged",
+    "--hostname=healthcare",
+    "--dns=8.8.8.8",
+    "--dns=8.8.4.4",
+    "--network=host"
+  ],
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
     "source=${localEnv:HOME}/projects/personal-projects/scripts,target=/scripts,type=bind"
@@ -45,24 +51,3 @@
     }
   }
 }
-
-// {
-//   "name": "Ubuntu Dev Container",
-//   "image": "ubuntu:22.04",
-//   "runArgs": ["--privileged", "--hostname=healthcare", "--network=host"],
-//   "mounts": [
-//     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
-//     "source=${localEnv:HOME}/projects/personal-projects/scripts,target=/scripts,type=bind"
-//   ],
-//   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/clinical-trials-service,type=bind",
-//   "workspaceFolder": "/workspaces/clinical-trials-service",
-//   "postCreateCommand": "apt-get update -y && apt update -y && apt-get upgrade -y && apt upgrade -y && apt install apt-utils && apt-get install -y docker.io && /scripts/setup.sh ",
-//   "remoteUser": "root",
-//   "forwardPorts": [8080, 3000, 5173],
-//   "portsAttributes": {
-//     "8080": {
-//       "label": "",
-//       "onAutoForward": "openBrowser"
-//     }
-//   }
-// }
